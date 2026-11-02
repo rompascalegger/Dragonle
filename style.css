@@ -98,7 +98,7 @@ body {
     repeating-linear-gradient(to bottom, var(--rock) 0 22px, #17120e 22px 44px, var(--rock-dark) 44px 50px, #17120e 50px 64px) 0 calc(var(--depth) * -1) / 100% 64px,
     linear-gradient(90deg, var(--black), var(--rock) 10%, var(--rock) 90%, var(--black));
   opacity: calc(.7 - var(--dark) * .45);
-  transition: background-position 1.2s steps(12);
+  transition: background-position 2.6s cubic-bezier(.45, 0, .55, 1);
 }
 /* Timber posts up the sides */
 .shaftwall::before,
@@ -966,7 +966,7 @@ html.flashy .flashy-btn { color: var(--lamp); text-shadow: 0 0 8px var(--lamp); 
   width: 12px;
   border-right: 2px solid rgba(122, 74, 36, .6);
   background: repeating-linear-gradient(to bottom, rgba(232, 168, 64, .45) 0 2px, transparent 2px 24px) 0 calc(var(--depth) * -1) / 100% 24px;
-  transition: background-position 1.2s steps(12);
+  transition: background-position 2.6s cubic-bezier(.45, 0, .55, 1);
 }
 .cable {
   position: absolute;
@@ -1206,7 +1206,24 @@ html.flashy .flashy-btn { color: var(--lamp); text-shadow: 0 0 8px var(--lamp); 
 .item.unknown .gem { color: #2a2018; text-shadow: none; }
 .item .qty { display: block; margin-top: 2px; font-family: var(--pixel-bold); font-size: .6rem; color: var(--gold); }
 .detail { margin-top: 12px; padding: 12px; border: 2px dashed var(--rc, var(--rust)); }
-.detail[hidden] { display: none; }
+.detail-empty { text-align: center; color: var(--dim) !important; }
+/* The bag fills the screen: only the list scrolls, the details stay put underneath */
+.bag-box { display: flex; flex-direction: column; height: calc(100vh - 32px); overflow: hidden; }
+.bag-box .tabs, .bag-box .detail, .bag-box h2, .bag-box .modal-sub { flex: none; }
+.bag-box .item-grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
+  padding: 2px 4px 2px 2px;
+  scrollbar-color: var(--iron) rgba(0, 0, 0, .4);
+}
+.bag-box .detail { max-height: 34vh; overflow-y: auto; }
+.grid-head { grid-column: 1 / -1; margin: 8px 0 2px; font-family: var(--pixel-bold); font-size: .75rem; font-weight: normal; color: var(--rc); }
+.grid-head.r6 { animation: psyche 3s linear infinite; }
+/* The secret tab shimmers between bone and toadstool */
+.tab.secret { --rc: var(--r5); color: var(--r5); animation: secret-tab 4s ease-in-out infinite alternate; }
+@keyframes secret-tab { to { --rc: var(--r6); color: var(--r6); } }
 .detail h4 { margin: 0; font-family: var(--pixel-bold); font-size: .85rem; color: var(--rc); }
 .detail p { margin: 6px 0; color: var(--text); font-size: 1.05rem; }
 .detail .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
@@ -1254,44 +1271,65 @@ html.flashy .flashy-btn { color: var(--lamp); text-shadow: 0 0 8px var(--lamp); 
   pointer-events: none;
   overflow: hidden;
 }
-/* The shaft wall rushing upward past the cage */
-.cage-shaft {
+/* A warm lantern glow over the mine; the wall behind still shows, gliding slowly up */
+.cage-glow {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(2px 2px at 30% 40%, rgba(232, 168, 64, .7) 60%, transparent) 0 0 / 160px 180px,
-    repeating-linear-gradient(to bottom, var(--timber) 0 14px, var(--timber-dark) 14px 18px, transparent 18px 200px) 0 0 / 100% 200px,
-    repeating-linear-gradient(to bottom, var(--rock) 0 26px, #17120e 26px 52px, var(--rock-dark) 52px 60px) 0 0 / 100% 60px,
-    var(--black);
-  animation: shaft-rush .35s linear infinite;
+  background: radial-gradient(circle at 50% 42%, rgba(255, 176, 80, .28), rgba(60, 30, 10, .35) 40%, rgba(8, 5, 3, .78) 75%);
+  animation: glow-breathe 2.6s ease-in-out infinite alternate;
 }
-@keyframes shaft-rush { to { background-position: 0 -180px, 0 -200px, 0 -60px, 0 0; } }
-/* The cage's own lamp swinging: light inside, dark outside */
-.cage-shaft::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 50% 40%, rgba(255, 170, 60, .18), rgba(0, 0, 0, .85) 55%);
-  animation: lamp-swing 1.4s ease-in-out infinite alternate;
-}
-@keyframes lamp-swing { from { transform: translateX(-4%); } to { transform: translateX(4%); } }
-/* Iron gate bars sliding shut from both sides */
-.cage-gate {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 51%;
-  background: repeating-linear-gradient(90deg, #2a2018 0 8px, transparent 8px 46px);
-  border-top: 14px solid #2a2018;
-  border-bottom: 14px solid #2a2018;
-}
-.cage-gate.left { left: 0; }
-.cage-gate.right { right: 0; }
-.cage-sign {
+@keyframes glow-breathe { to { opacity: .82; } }
+/* The lift: a rope, a lantern and the sign, swaying gently together */
+.cage-lift {
   position: absolute;
   left: 50%;
-  top: 40%;
-  transform: translate(-50%, -50%);
+  top: 0;
+  height: 40%;
+  transform-origin: 50% 0;
+  animation: lift-sway 2.6s ease-in-out infinite alternate;
+}
+@keyframes lift-sway { from { transform: rotate(-1.6deg); } to { transform: rotate(1.6deg); } }
+.cage-rope {
+  position: absolute;
+  left: -1px;
+  top: 0;
+  bottom: 0;
+  border-left: 3px dotted #8a6a42;
+}
+.cage-lantern {
+  position: absolute;
+  left: -9px;
+  bottom: -64px;
+  width: 18px;
+  height: 22px;
+  border: 3px solid #2a2018;
+  border-radius: 4px 4px 6px 6px;
+  background: radial-gradient(circle, #fff3c4, #ffb347 55%, #c46a1a);
+  box-shadow: 0 0 24px 8px rgba(255, 170, 60, .45);
+  animation: lantern-glow 1.8s ease-in-out infinite alternate;
+}
+@keyframes lantern-glow { to { box-shadow: 0 0 34px 12px rgba(255, 170, 60, .6); } }
+/* Dust motes drifting up past the lantern: the lift is going down */
+.cage-mote {
+  position: absolute;
+  bottom: -10px;
+  width: 3px;
+  height: 3px;
+  background: rgba(255, 210, 140, .7);
+  border-radius: 50%;
+  animation: mote-rise 4s linear infinite;
+}
+@keyframes mote-rise {
+  from { transform: translate(0, 0); opacity: 0; }
+  15% { opacity: .9; }
+  to { transform: translate(12px, -105vh); opacity: 0; }
+}
+.cage-sign {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 70px;
+  transform: translateX(-50%);
   padding: 14px 22px 10px;
   text-align: center;
   white-space: nowrap;
@@ -1310,7 +1348,7 @@ html.flashy .flashy-btn { color: var(--lamp); text-shadow: 0 0 8px var(--lamp); 
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dust, h1, .roll-btn, .message::after, .nugget, .darkness, .cage-shaft, .cage-shaft::after, .eye { animation: none; }
+  .dust, h1, .roll-btn, .message::after, .nugget, .darkness, .cage-glow, .cage-lift, .cage-lantern, .cage-mote, .eye { animation: none; }
   .eye-pair { animation-duration: .01s; }
   .shaftwall, .shaft { transition: none; }
 }

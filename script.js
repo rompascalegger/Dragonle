@@ -27,7 +27,7 @@ const stageEl = $("stage");
 const floorEl = document.querySelector(".floor");
 const darknessEl = $("darkness");
 
-const VERSION = "1.6.0";
+const VERSION = "1.7.0";
 
 // Ten tiers by the deepest level a run reaches: label, player title, verdict, color
 const TIERS = [
@@ -696,163 +696,233 @@ const CRYSTALS = [
   { name: "CITRINE", base: [200, 150, 40], light: [250, 214, 110], shadow: [120, 80, 10], shine: true },
   { name: "JADE", base: [50, 140, 90], light: [120, 210, 150], shadow: [20, 76, 46], shine: true },
 ];
-const BONE = { name: "BONE", base: [190, 178, 146], light: [230, 222, 196], shadow: [120, 108, 82] };
 const SHROOM = { name: "MUSHROOM", base: [176, 36, 150], light: [255, 120, 230], shadow: [96, 14, 84], shine: true };
 
-// Shapes, each a test on (dx, dy) from the center of the 50x50 grid, with its own random
-// parameters. weight = how common, depth = only from this darkness on, spin = turns as it wiggles
-const SHAPES = {
-  // A lumpy boulder: a circle bent by three harmonics
-  boulder: {
-    weight: 6,
-    name: "BOULDER",
-    make: () => ({ h: [2, 3, 5].map((k) => ({ k, amp: between(0.04, 0.12), ph: between(0, Math.PI * 2) })) }),
-    test: (dx, dy, p) => {
-      const a = Math.atan2(dy, dx);
-      let radius = 19.5;
-      for (const h of p.h) radius += Math.sin(a * h.k + h.ph) * h.amp * 19.5;
-      return Math.hypot(dx, dy) <= radius;
-    },
-  },
-  // A star of jagged spikes
-  shard: {
-    weight: 3,
-    name: "SHARD",
-    spin: true,
-    make: () => ({ k: range(4, 9), ph: between(0, Math.PI * 2), inner: between(9, 13) }),
-    test: (dx, dy, p) => {
-      const a = Math.atan2(dy, dx);
-      const spike = Math.pow(Math.max(0, Math.cos(p.k * a + p.ph)), 3);
-      return Math.hypot(dx, dy) <= p.inner + spike * (22 - p.inner);
-    },
-  },
-  // Pointed prisms growing from a base
-  crystal: {
-    weight: 2,
-    name: "CLUSTER",
-    make: () => ({
-      prisms: Array.from({ length: range(3, 6) }, () => ({ tilt: between(-0.75, 0.75), w: between(3.5, 6.5), len: between(15, 26) })),
-    }),
-    test: (dx, dy, p) => {
-      if (Math.hypot(dx, dy - 12) <= 9) return true;
-      for (const q of p.prisms) {
-        // Along the prism (u) and across it (v), from its foot at the bottom
-        const x = dx;
-        const y = 14 - dy;
-        const u = x * Math.sin(q.tilt) + y * Math.cos(q.tilt);
-        const v = x * Math.cos(q.tilt) - y * Math.sin(q.tilt);
-        if (u < 0 || u > q.len) continue;
-        const half = u > q.len - q.w ? (q.len - u) : q.w;
-        if (Math.abs(v) <= half) return true;
+// Small noise helpers for the stone surfaces: a hash per cell, and smooth value noise
+const hash2 = (x, y, s) => {
+  const h = Math.sin(x * 127.1 + y * 311.7 + s * 74.7) * 43758.5453;
+  return h - Math.floor(h);
+};
+function vnoise(x, y, s) {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const u = (x - ix) * (x - ix) * (3 - 2 * (x - ix));
+  const v = (y - iy) * (y - iy) * (3 - 2 * (y - iy));
+  const a = hash2(ix, iy, s);
+  const b = hash2(ix + 1, iy, s);
+  const c = hash2(ix, iy + 1, s);
+  const d = hash2(ix + 1, iy + 1, s);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+const wrap = (v, n) => ((v % n) + n) % n;
+// Nearest and second nearest seed point, for cell-like patterns
+function cellsOf(x, y, pts) {
+  let d1 = 1e9;
+  let d2 = 1e9;
+  let id = 0;
+  pts.forEach(([px, py], i) => {
+    const d = Math.hypot(x - px, y - py);
+    if (d < d1) [d2, d1, id] = [d1, d, i];
+    else if (d < d2) d2 = d;
+  });
+  return { d1, d2, id };
+}
+
+// Rock outlines. Every one is a plain stone, just broken off differently:
+// stretched (sx, sy), lumpy (lump), cut flat underneath (flat), faceted (sides) or cleft
+const FORMS = {
+  boulder: { lump: 0.09 },
+  pebble: { sx: 1.18, sy: 0.82, lump: 0.03 },
+  slab: { sx: 1.2, sy: 0.74, lump: 0.05, flat: 0.68 },
+  upright: { sx: 0.8, sy: 1.16, lump: 0.06 },
+  chunk: { sides: 7, lump: 0.04 },
+  block: { sides: 5, lump: 0.03 },
+  chipped: { sides: 11, lump: 0.03, chips: 0.22 },
+  knobbly: { lump: 0.13, knobs: true },
+  sitting: { lump: 0.07, flat: 0.62 },
+  cleft: { lump: 0.08, cleft: true },
+};
+
+function makeOutline(form) {
+  const f = FORMS[form];
+  const o = {
+    ...f,
+    sx: (f.sx || 1) * between(0.94, 1.06),
+    sy: (f.sy || 1) * between(0.94, 1.06),
+    tilt: between(-0.3, 0.3),
+    ph: between(0, Math.PI * 2),
+    cleftAt: between(-5, 5),
+    h: (f.knobs ? [3, 5, 7] : [2, 3, 5]).map((k) => ({ k, amp: between(0.5, 1) * f.lump, ph: between(0, Math.PI * 2) })),
+    corners: f.sides ? Array.from({ length: f.sides }, () => between(1 - (f.chips || 0.12), 1.04)) : null,
+  };
+  // Shrink stretched or lumpy stones so they still fit the grid
+  const reach = Math.max(o.sx, o.sy) * (1 + o.h.reduce((s, h) => s + h.amp, 0)) * (o.corners ? 1.1 : 1);
+  o.radius = Math.min(19.5, 23 / reach);
+  return o;
+}
+
+function inOutline(dx, dy, o) {
+  const cos = Math.cos(o.tilt);
+  const sin = Math.sin(o.tilt);
+  const x = (dx * cos + dy * sin) / o.sx;
+  const y = (-dx * sin + dy * cos) / o.sy;
+  if (o.flat && y > o.flat * o.radius) return false;
+  // A wedge-shaped split from the top
+  if (o.cleft && y < -3 && Math.abs(x - o.cleftAt) < (-y - 3) * 0.2) return false;
+  const a = Math.atan2(y, x);
+  let radius = o.radius;
+  if (o.corners) {
+    // Straight broken faces between corners
+    const n = o.corners.length;
+    const seg = (Math.PI * 2) / n;
+    const rel = wrap(a - o.ph, Math.PI * 2) / seg;
+    const i = Math.floor(rel);
+    const t = rel - i;
+    radius *= (o.corners[i % n] * (1 - t) + o.corners[(i + 1) % n] * t) * (Math.cos(Math.PI / n) / Math.cos((t - 0.5) * seg));
+  }
+  for (const h of o.h) radius *= 1 + Math.sin(a * h.k + h.ph) * h.amp;
+  return Math.hypot(x, y) <= radius;
+}
+
+// Stone surfaces. Each paints one grid cell: 0 plain, 1 lit, -1 shaded, -2 deep shadow,
+// 2 accent (its own color, or the stone's veins), 3 a glint
+const TEXTURES = {
+  grain: { f: (x, y, p) => { const h = hash2(x, y, p.seed); return h > 0.9 ? 1 : h < 0.1 ? -1 : 0; } },
+  polished: { f: (x, y) => { const d = Math.hypot(x + 7, y + 7); return d < 2 ? 3 : d < 5 ? 1 : x + y > 18 ? -1 : 0; } },
+  strata: { f: (x, y, p) => { const b = wrap(y * Math.cos(p.ang) - x * Math.sin(p.ang) + p.ph * 3, 7); return b < 1.6 ? -1 : b > 5.6 ? 1 : 0; } },
+  thinStrata: { f: (x, y, p) => (wrap(y + x * Math.sin(p.ang) * 0.4 + p.ph, 3.5) < 0.9 ? -1 : 0) },
+  bedding: { accent: [176, 150, 112], f: (x, y, p) => { const b = wrap(y + p.ph * 4, 10); return b < 3 ? 2 : b < 4 ? -2 : b > 9 ? 1 : 0; } },
+  wavy: { f: (x, y, p) => { const b = wrap(y + Math.sin(x * 0.25 + p.ph) * 3, 6); return b < 1.4 ? -1 : b > 4.8 ? 1 : 0; } },
+  folds: { accent: [210, 196, 170], f: (x, y, p) => { const b = wrap(y + Math.sin(x * 0.14 + p.ph) * 7, 6); return b < 1 ? 2 : b < 2.2 ? -1 : 0; } },
+  veins: { f: (x, y, p) => (Math.abs(Math.sin(x * 0.22 + y * 0.12 + vnoise(x * 0.15, y * 0.15, p.seed) * 5 + p.ph)) < 0.1 ? 2 : 0) },
+  quartzBand: { accent: [232, 228, 214], f: (x, y, p) => { const d = Math.abs(y * Math.cos(p.ang) - x * Math.sin(p.ang) - p.cy); return d < 1.6 ? (hash2(x, y, p.seed) > 0.85 ? 3 : 2) : d < 2.4 ? -1 : 0; } },
+  speckle: { f: (x, y, p) => { const h = hash2(x, y, p.seed); return h > 0.97 ? 3 : h > 0.82 ? 1 : h < 0.14 ? -1 : 0; } },
+  spots: { f: (x, y, p) => (p.pts.slice(0, 7).some(([px, py], i) => Math.hypot(x - px, y - py) < 2.5 + (i % 3)) ? -1 : 0) },
+  pockmarks: {
+    f: (x, y, p) => {
+      for (const [px, py] of p.pts) {
+        const d = Math.hypot(x - px, y - py);
+        if (d < 1.7) return -2;
+        if (d < 2.7) return x - px + y - py > 0 ? 1 : -1;
       }
-      return false;
+      return 0;
     },
   },
-  // A flat, chipped slab
-  slab: {
-    weight: 2,
-    name: "SLAB",
-    make: () => ({ tilt: between(-0.4, 0.4), w: between(18, 22), h: between(8, 12) }),
-    test: (dx, dy, p) => {
-      const x = dx * Math.cos(p.tilt) + dy * Math.sin(p.tilt);
-      const y = -dx * Math.sin(p.tilt) + dy * Math.cos(p.tilt);
-      return Math.abs(x) <= p.w && Math.abs(y) <= p.h && Math.abs(x) + Math.abs(y) * 1.6 <= p.w + p.h * 0.9;
+  crackle: { f: (x, y, p) => { const c = cellsOf(x, y, p.pts); return c.d2 - c.d1 < 1 ? -2 : 0; } },
+  facets: { f: (x, y, p) => [1, 0, -1][cellsOf(x, y, p.pts.slice(0, 7)).id % 3] },
+  breccia: { f: (x, y, p) => { const c = cellsOf(x, y, p.pts); return c.d2 - c.d1 < 0.8 ? -2 : [2, 1, -1, 0][c.id % 4]; } },
+  agate: { f: (x, y, p) => [2, 1, 0, -1][Math.floor(wrap(Math.hypot(x - p.cx, (y - p.cy) * 1.2), 8) / 2)] },
+  banded: { f: (x, y, p) => [2, 1, 0, -1, 0, 1][Math.floor(wrap(y * Math.cos(p.ang) - x * Math.sin(p.ang) + p.ph, 12) / 2)] },
+  conglomerate: {
+    f: (x, y, p) => {
+      for (let i = 0; i < p.pts.length; i++) {
+        const [px, py] = p.pts[i];
+        const r = 2.5 + (i % 3);
+        const d = Math.hypot(x - px, y - py);
+        if (d < r) return d > r - 1 ? (x - px + y - py < 0 ? 1 : -2) : [2, -1, 1][i % 3];
+      }
+      return hash2(x, y, p.seed) > 0.85 ? -1 : 0;
     },
   },
-  // Two rocks fused together
-  twin: {
-    weight: 2,
-    name: "TWINS",
-    spin: true,
-    make: () => ({ a: between(0, Math.PI), r1: between(10, 13), r2: between(9, 12), gap: between(8, 10) }),
-    test: (dx, dy, p) => {
-      const ox = Math.cos(p.a) * p.gap;
-      const oy = Math.sin(p.a) * p.gap;
-      return Math.hypot(dx - ox, dy - oy) <= p.r1 || Math.hypot(dx + ox, dy + oy) <= p.r2;
+  scales: { f: (x, y) => { const row = Math.floor(y / 4); const d = Math.hypot(wrap(x + (row % 2) * 3, 6) - 3, wrap(y, 4) - 4); return d > 2.5 && d < 3.4 ? -1 : wrap(y, 4) < 1 ? 1 : 0; } },
+  moss: { accent: [92, 136, 58], f: (x, y, p) => (vnoise(x * 0.25, y * 0.25, p.seed) > 0.45 + y * 0.03 ? (hash2(x, y, p.seed) > 0.8 ? 1 : 2) : 0) },
+  rust: { accent: [170, 84, 36], f: (x, y, p) => { const n = vnoise(x * 0.7, y * 0.05, p.seed); return n > 0.66 ? 2 : n > 0.6 ? -1 : 0; } },
+  crystals: {
+    accent: [168, 214, 236],
+    f: (x, y, p) => {
+      for (const [px, py] of p.pts.slice(0, 9)) {
+        const d = Math.abs(x - px) + Math.abs(y - py) * 0.8;
+        if (d < 2.4) return x < px ? 3 : 2;
+        if (d < 3.2) return -2;
+      }
+      return 0;
     },
   },
-  // A crescent moon of stone
-  crescent: {
-    weight: 1.5,
-    name: "CRESCENT",
-    spin: true,
-    make: () => ({ ox: between(6, 9), oy: between(-6, -2) }),
-    test: (dx, dy, p) => Math.hypot(dx, dy) <= 20 && Math.hypot(dx - p.ox, dy - p.oy) > 15,
-  },
-  // A ring: swing at the hole and you hit nothing
-  ring: {
-    weight: 1.2,
-    name: "RING",
-    spin: true,
-    make: () => ({ hole: between(7, 10), lump: between(0, Math.PI * 2) }),
-    test: (dx, dy, p) => {
-      const d = Math.hypot(dx, dy);
-      return d >= p.hole && d <= 19 + Math.sin(Math.atan2(dy, dx) * 3 + p.lump) * 1.5;
+  ore: { accent: [236, 184, 64], f: (x, y, p) => { const h = hash2(x, y, p.seed); return h > 0.95 ? 2 : h > 0.94 ? 3 : h < 0.1 ? -1 : 0; } },
+  shale: { f: (x, y, p) => (wrap(y + Math.floor(hash2(Math.floor(x / 6), 0, p.seed) * 3), 3) < 1 ? -1 : 0) },
+  pumice: { f: (x, y, p) => (hash2(Math.floor(x / 2), Math.floor(y / 2), p.seed) > 0.62 && hash2(x, y, p.seed) > 0.3 ? -2 : hash2(x, y, p.seed + 1) > 0.9 ? 1 : 0) },
+  zebra: { f: (x, y, p) => { const s = Math.sin(x * 0.5 + Math.sin(y * 0.18 + p.ph) * 2.5); return s > 0.55 ? -1 : s < -0.85 ? 1 : 0; } },
+  swirl: { f: (x, y, p) => { const s = Math.sin(x * 0.18 + y * 0.05 + vnoise(x * 0.12, y * 0.12, p.seed) * 6); return Math.abs(s) < 0.12 ? 2 : s > 0.88 ? 1 : 0; } },
+  cubes: {
+    accent: [214, 178, 74],
+    f: (x, y, p) => {
+      const cx = wrap(x + p.ph, 6);
+      const cy = wrap(y, 6);
+      if (hash2(Math.floor((x + p.ph) / 6), Math.floor(y / 6), p.seed) < 0.55) return 0;
+      return cx < 1 || cy < 1 ? 3 : cx >= 5 || cy >= 5 ? -2 : 2;
     },
   },
-  // A tall stalagmite
-  pillar: {
-    weight: 1.5,
-    name: "STALAGMITE",
-    make: () => ({ tilt: between(-0.25, 0.25), base: between(8, 11) }),
-    test: (dx, dy, p) => {
-      const x = dx - dy * p.tilt;
-      if (dy < -22 || dy > 20) return false;
-      const width = p.base * ((dy + 22) / 42) + 1.5;
-      return Math.abs(x) <= width + Math.sin(dy * 0.9) * 1.2;
+  bubbles: { f: (x, y, p) => { for (const [px, py] of p.pts) { const d = Math.hypot(x - px, y - py); if (d < 1.6) return 2; if (d < 2.3) return -1; } return 0; } },
+  hatch: { f: (x, y, p) => (wrap(x + y + p.ph, 6) < 1 || wrap(x - y + p.ph, 6) < 1 ? -1 : 0) },
+  dendrite: { f: (x, y, p) => (Math.abs(vnoise(x * 0.2, y * 0.2, p.seed) - 0.5) < 0.035 ? -2 : Math.abs(vnoise(x * 0.45, y * 0.45, p.seed) - 0.5) < 0.03 ? -1 : 0) },
+  tigerEye: { accent: [214, 160, 60], f: (x, y, p) => { const b = Math.sin(y * 0.7 + Math.sin(x * 0.2 + p.ph) * 2); return b > 0.6 ? 2 : b > 0 ? 1 : b < -0.7 ? -1 : 0; } },
+  jointed: { f: (x, y) => { const col = Math.floor((x + 50) / 7); return wrap(x, 7) < 1 || wrap(y + (col % 2) * 3.5, 9) < 1 ? -2 : wrap(x, 7) < 2 ? 1 : 0; } },
+  lichen: {
+    accent: [200, 204, 150],
+    f: (x, y, p) => {
+      for (let i = 0; i < 6; i++) {
+        const [px, py] = p.pts[i];
+        const d = Math.hypot(x - px, y - py);
+        const r = 2.5 + (i % 3) * 0.8;
+        if (Math.abs(d - r) < 0.7) return 2;
+        if (d < r && hash2(x, y, p.seed) > 0.6) return 2;
+      }
+      return 0;
     },
   },
-  // An isometric block, shaded per face
-  cube: {
-    weight: 1.2,
-    name: "BLOCK",
-    spin: true,
-    make: () => ({}),
-    test: (dx, dy) => Math.abs(dx) <= 17 && Math.abs(dy) + Math.abs(dx) * 0.577 <= 20,
-  },
-  // A fossil curled into a spiral
-  ammonite: {
-    weight: 1,
-    name: "AMMONITE",
-    spin: true,
-    make: () => ({ turn: between(0, Math.PI * 2) }),
-    test: (dx, dy) => Math.hypot(dx, dy) <= 18,
-  },
-  // A pile of pebbles stuck together
-  cluster: {
-    weight: 1.5,
-    name: "PEBBLES",
-    make: () => ({ blobs: Array.from({ length: range(5, 8) }, () => ({ x: between(-12, 12), y: between(-12, 12), r: between(6, 10) })) }),
-    test: (dx, dy, p) => p.blobs.some((b) => Math.hypot(dx - b.x, dy - b.y) <= b.r),
-  },
-  // Deep down, some rocks look back at you
-  skull: {
-    weight: 2,
-    depth: 0.3,
-    name: "SKULL",
-    make: () => ({}),
-    test: (dx, dy) => {
-      const head = Math.hypot(dx / 1.05, dy + 4) <= 16;
-      const jaw = Math.abs(dx) <= 9 && dy >= 6 && dy <= 18;
-      const socket = Math.hypot(Math.abs(dx) - 6.5, dy + 2) <= 4;
-      const nose = dy >= 5 && dy <= 9 && Math.abs(dx) <= (dy - 4) * 0.6;
-      const teeth = dy >= 14 && dy <= 18 && Math.abs(dx) <= 8 && Math.round(dx) % 3 === 0;
-      return (head || jaw) && !socket && !nose && !teeth;
+  mottled: { f: (x, y, p) => { const n = vnoise(x * 0.18, y * 0.18, p.seed); return n > 0.66 ? 1 : n < 0.33 ? -1 : 0; } },
+  striations: { f: (x, y, p) => (wrap(x * 0.8 + y * 0.6 + p.ph, 3) < 0.8 ? 1 : 0) },
+  nodules: { f: (x, y, p) => { for (let i = 0; i < 6; i++) { const [px, py] = p.pts[i]; if (Math.hypot(x - px, y - py) < 4.5) { const s = x - px + y - py; return s < -2 ? 1 : s > 2 ? -1 : 0; } } return 0; } },
+  bandedIron: { accent: [152, 42, 32], f: (x, y, p) => { const b = wrap(y + Math.sin(x * 0.2 + p.ph) * 1.5, 5); return b < 1.6 ? 2 : b < 2.2 ? -2 : 0; } },
+  fissures: {
+    f: (x, y, p) => {
+      for (let i = 0; i < 3; i++) {
+        const a = p.ph + i * 2.1;
+        const d = (x - p.pts[i][0]) * Math.sin(a) - (y - p.pts[i][1]) * Math.cos(a);
+        if (Math.abs(d) < 0.7) return -2;
+        if (d > 0.7 && d < 1.6) return 1;
+      }
+      return 0;
     },
   },
+  onion: { f: (x, y, p) => { const b = wrap(Math.hypot(x, y * 1.15) + p.ph, 5); return b < 1 ? -1 : b < 1.7 ? 1 : 0; } },
+  mica: { accent: [236, 236, 246], f: (x, y, p) => { const h = hash2(x, y, p.seed); return h > 0.93 ? 3 : h < 0.05 ? 2 : 0; } },
+  frost: { f: (x, y, p) => (hash2(x, y, p.seed) > 0.76 ? 3 : 0) },
+  ripples: { f: (x, y, p) => { const s = Math.sin(y * 0.9 + Math.sin(x * 0.3 + p.ph) * 1.5); return s > 0.7 ? 1 : s < -0.8 ? -1 : 0; } },
 };
+
+// Fifty kinds of rock, each an outline and a surface. They're listed from the
+// shallowest to the deepest: every ten unlock a little further into the dark
+const ROCK_STYLES = [
+  ["BOULDER", "boulder", "grain"], ["PEBBLE", "pebble", "polished"], ["SLAB", "slab", "grain"], ["CHUNK", "chunk", "facets"],
+  ["STRATA", "boulder", "strata"], ["BEDROCK", "sitting", "bedding"], ["SPECKLED", "knobbly", "speckle"], ["CRACKLED", "chunk", "crackle"],
+  ["CHIPPED", "chipped", "grain"], ["MOTTLED", "boulder", "mottled"],
+
+  ["BLOCK", "block", "crackle"], ["LAYERED", "upright", "thinStrata"], ["SPOTTED", "pebble", "spots"], ["POCKMARKED", "boulder", "pockmarks"],
+  ["MOSSY", "sitting", "moss"], ["VEINED", "chunk", "veins"], ["FLAKY", "slab", "shale"], ["CLEFT", "cleft", "grain"],
+  ["WAVY", "slab", "wavy"], ["QUARTZ-BANDED", "boulder", "quartzBand"],
+
+  ["RUSTED", "block", "rust"], ["CONGLOMERATE", "knobbly", "conglomerate"], ["BRECCIA", "chunk", "breccia"], ["FACETED", "chipped", "facets"],
+  ["ORE-FLECKED", "boulder", "ore"], ["STRIATED", "chunk", "striations"], ["NODULAR", "knobbly", "nodules"], ["LICHENED", "sitting", "lichen"],
+  ["POLISHED", "upright", "polished"], ["RIPPLED", "slab", "ripples"],
+
+  ["AGATE NODULE", "pebble", "agate"], ["BANDED", "upright", "banded"], ["SCALY", "boulder", "scales"], ["PUMICE", "knobbly", "pumice"],
+  ["STRIPED", "pebble", "zebra"], ["SWIRLED", "boulder", "swirl"], ["JOINTED", "upright", "jointed"], ["FISSURED", "cleft", "fissures"],
+  ["MICA-FLECKED", "chipped", "mica"], ["EXFOLIATED", "boulder", "onion"],
+
+  ["FOLDED", "boulder", "folds"], ["PYRITE-STUDDED", "block", "cubes"], ["AMYGDALOID", "boulder", "bubbles"], ["HATCHED", "chunk", "hatch"],
+  ["DENDRITIC", "slab", "dendrite"], ["TIGER-EYE", "pebble", "tigerEye"], ["BANDED IRON", "slab", "bandedIron"], ["CRYSTAL-STUDDED", "chunk", "crystals"],
+  ["FROSTED", "pebble", "frost"], ["WEATHERED", "knobbly", "pockmarks"],
+].map(([name, form, tex], i) => ({ name, form, tex, depth: Math.floor(i / 10) * 0.1 }));
+const styleNamed = (name) => ROCK_STYLES.find((s) => s.name === name);
+const GEODE_STYLES = ["AGATE NODULE", "CRYSTAL-STUDDED", "AMYGDALOID"].map(styleNamed);
+
 // The mushroom rock is never picked at random: only the 1-in-200 roll makes one
-SHAPES.mushroom = {
-  weight: 0,
-  name: "MUSHROOM",
-  make: () => ({}),
-  test: (dx, dy) => {
-    const cap = dy <= 1 && Math.pow(dx / 21, 2) + Math.pow((dy + 1) / 17, 2) <= 1;
-    const stem = dy > 0 && dy <= 20 && Math.abs(dx) <= 6 + (dy > 16 ? (dy - 16) * 0.9 : 0);
-    return cap || stem;
-  },
-};
-const SHAPE_NAMES = Object.keys(SHAPES);
+function inMushroom(dx, dy) {
+  const cap = dy <= 1 && Math.pow(dx / 21, 2) + Math.pow((dy + 1) / 17, 2) <= 1;
+  const stem = dy > 0 && dy <= 20 && Math.abs(dx) <= 6 + (dy > 16 ? (dy - 16) * 0.9 : 0);
+  return cap || stem;
+}
 
 function pickWeighted(list, weight) {
   const total = list.reduce((sum, x) => sum + weight(x), 0);
@@ -883,25 +953,41 @@ function makeRock() {
   // Higher insight unlocks wilder ways to wiggle, from calm to frantic
   const unlocked = Math.min(PATTERNS.length, Math.max(1, Math.ceil(PATTERNS.length * clamp01(rockLevel / 100))));
 
-  // Shape and stone: deeper levels unlock the stranger ones
+  // Style and stone: deeper levels unlock the stranger ones, and favor the newest few
   const dark = darkFor(run ? run.level : 1);
-  const shape = shroom ? "mushroom" : fossil || pet ? "boulder" : geode ? pick(["boulder", "crystal"]) : pickWeighted(SHAPE_NAMES.filter((s) => SHAPES[s].weight > 0 && (SHAPES[s].depth || 0) <= dark), (s) => SHAPES[s].weight);
-  const params = SHAPES[shape].make();
+  const style =
+    fossil || pet || shroom ? ROCK_STYLES[0]
+    : geode ? pick(GEODE_STYLES)
+    : pickWeighted(ROCK_STYLES.filter((s) => s.depth <= dark), (s) => 1 + (s.depth > dark - 0.1 ? 1 : 0));
+  const outline = makeOutline(style.form);
   const material =
     shroom ? SHROOM
     : pet ? MATERIALS[0]
     : fossil ? MATERIALS[1]
-    : shape === "skull" ? BONE
-    : shape === "crystal" || geode ? pick(CRYSTALS)
+    : geode ? pick(CRYSTALS)
     : pickWeighted(MATERIALS.filter((m) => m.depth <= dark + 0.05), (m) => 1 + (m.depth <= dark ? m.depth * 3 : 0));
+  const texture = TEXTURES[style.tex];
+  const texParams = {
+    seed: between(0, 100),
+    ph: between(0, Math.PI * 2),
+    ang: between(-0.5, 0.5),
+    cx: between(-6, 6),
+    cy: between(-6, 6),
+    pts: Array.from({ length: 14 }, () => [between(-17, 17), between(-17, 17)]),
+  };
 
-  // The shape becomes a 50x50 mask, used for drawing and for hit tests
+  // The outline becomes a 50x50 mask, used for drawing and for hit tests; the surface
+  // pattern is worked out once per cell here so drawing stays cheap
   const mask = new Uint8Array(ROCK_GRID * ROCK_GRID);
+  const surface = new Int8Array(ROCK_GRID * ROCK_GRID);
   const cells = [];
   for (let y = 0; y < ROCK_GRID; y++) {
     for (let x = 0; x < ROCK_GRID; x++) {
-      if (SHAPES[shape].test(x - 24.5, y - 24.5, params)) {
+      const dx = x - 24.5;
+      const dy = y - 24.5;
+      if (shroom ? inMushroom(dx, dy) : inOutline(dx, dy, outline)) {
         mask[y * ROCK_GRID + x] = 1;
+        surface[y * ROCK_GRID + x] = shroom ? 0 : texture.f(dx, dy, texParams);
         cells.push([x, y]);
       }
     }
@@ -940,13 +1026,12 @@ function makeRock() {
     pet,
     luck,
     geode,
-    shape,
-    params,
+    style,
     material,
+    accent: texture.accent || null,
     mask,
-    name: geode ? "GEODE" : fossil ? "FOSSIL" : shroom ? "MUSHROOM" : pet ? "PET ROCK" : `${material.name} ${SHAPES[shape].name}`,
-    // Some shapes turn as they wiggle; the rest just rock back and forth a little
-    spin: SHAPES[shape].spin ? between(0.4, 1.1) * (Math.random() < 0.5 ? -1 : 1) : 0,
+    surface,
+    name: geode ? "GEODE" : fossil ? "FOSSIL" : shroom ? "MUSHROOM" : pet ? "PET ROCK" : `${style.name} ${material.name}`,
     angle: between(-0.3, 0.3),
     pattern: range(0, unlocked),
     phase: between(0, Math.PI * 2),
@@ -991,22 +1076,22 @@ function drawRock() {
   const body = mix(black, m.base, r.shade);
   const hi = mix(black, m.light, r.shade);
   const lo = mix(black, m.shadow, r.shade);
-  const isCube = r.shape === "cube";
+  // The surface pattern's colors, keyed by its cell values
+  const tones = {
+    [-2]: mix(black, m.shadow, r.shade * 0.6),
+    [-1]: mix(black, m.base.map((v, i) => (v + m.shadow[i]) / 2), r.shade),
+    0: body,
+    1: mix(black, m.base.map((v, i) => (v + m.light[i]) / 2), r.shade),
+    2: mix(black, r.accent || m.veins || m.light, r.shade),
+    3: mix(black, m.light.map((v) => (v + 255) / 2), Math.max(r.shade, 0.6)),
+  };
   for (let y = 0; y < ROCK_GRID; y++) {
     for (let x = 0; x < ROCK_GRID; x++) {
       if (!insideRock(r, x, y)) continue;
-      if (isCube) {
-        // Three faces: lit top, plain left, shadowed right
-        const dx = x - 24.5;
-        const dy = y - 24.5;
-        const top = dy < 0 && dy + Math.abs(dx) * 0.577 < 0;
-        rctx.fillStyle = top ? hi : dx < 0 ? body : lo;
-      } else {
-        // Light from the top left: edge pixels facing it are bright, the others dark
-        const upLeft = !insideRock(r, x - 2, y - 2);
-        const downRight = !insideRock(r, x + 2, y + 2);
-        rctx.fillStyle = upLeft ? hi : downRight ? lo : body;
-      }
+      // Light from the top left: edge pixels facing it are bright, the others dark
+      const upLeft = !insideRock(r, x - 2, y - 2);
+      const downRight = !insideRock(r, x + 2, y + 2);
+      rctx.fillStyle = upLeft ? hi : downRight ? lo : tones[r.surface[y * ROCK_GRID + x]];
       rctx.fillRect(x, y, 1, 1);
       if (!insideRock(r, x - 1, y) || !insideRock(r, x + 1, y) || !insideRock(r, x, y - 1) || !insideRock(r, x, y + 1)) {
         rctx.fillStyle = "#080504";
@@ -1019,16 +1104,6 @@ function drawRock() {
     rctx.fillStyle = mix(black, m.veins, r.shade);
     for (let x = 0; x < ROCK_GRID; x++) {
       const y = Math.round(24 + Math.sin(x * 0.35 + r.phase) * 7 + Math.sin(x * 0.9) * 2);
-      if (insideRock(r, x, y)) rctx.fillRect(x, y, 1, 1);
-    }
-  }
-  // A fossil's spiral
-  if (r.shape === "ammonite") {
-    rctx.fillStyle = mix(black, m.shadow, r.shade * 0.7);
-    for (let t = 0; t < 22; t += 0.08) {
-      const rad = 1 + t * 0.78;
-      const x = Math.round(24.5 + Math.cos(t + r.params.turn) * rad);
-      const y = Math.round(24.5 + Math.sin(t + r.params.turn) * rad);
       if (insideRock(r, x, y)) rctx.fillRect(x, y, 1, 1);
     }
   }
@@ -1087,12 +1162,6 @@ function drawRock() {
     rctx.fillStyle = "#b8a882";
     for (let i = 0; i < 22; i += 3) rctx.fillRect(14 + i, Math.round(32 - i * 0.45), 1, 1);
   }
-  // A skull's sockets glow, like everything else down here
-  if (r.shape === "skull") {
-    rctx.fillStyle = "#ff3b2f";
-    rctx.fillRect(17, 22, 2, 1);
-    rctx.fillRect(30, 22, 2, 1);
-  }
   // Cracks grow as health drops
   const damage = 1 - Math.max(0, r.hp) / r.maxHp;
   rctx.fillStyle = "#050302";
@@ -1144,9 +1213,8 @@ function frame(now) {
     const half = ROCK_PX / 2;
     rock.x = pitW / 2 + ox * Math.max(0, pitW / 2 - half);
     rock.y = pitH / 2 + oy * Math.max(0, pitH / 2 - half);
-    // Spinning shapes turn with the wiggle; the rest rock back and forth
-    if (rock.spin) rock.angle += dt * rock.spin * speed * 1.6;
-    else rock.angle = 0.18 * Math.sin(rock.phase * 0.8);
+    // Rocks sway back and forth as they wiggle
+    rock.angle = 0.18 * Math.sin(rock.phase * 0.8);
     knock *= 0.8;
     const jitter = knock > 0.5 ? (Math.random() - 0.5) * knock : 0;
     rockCanvas.style.transform = `translate(${rock.x - half + jitter}px, ${rock.y - half + jitter}px) rotate(${rock.angle.toFixed(3)}rad)`;
@@ -1749,32 +1817,43 @@ const LEVEL_LINES = [
   ["> they are closer now", "> the dark is breathing", "> no one has come back from here"],
 ];
 
-// The cage ride down: gates slam shut, the shaft rushes past, the depth counter falls
+// The lift ride down: a warm lantern, a gentle sway, the wall gliding slowly past.
+// It eases off and eases in, so it feels like being lowered, never like falling
+const RIDE_MS = 2600;
 async function descend(level) {
   const from = (level - 1) * METERS_PER_LEVEL;
   const to = level * METERS_PER_LEVEL;
   const cage = document.createElement("div");
   cage.className = "cage";
   cage.style.setProperty("--level-color", TIERS[tierFor(level)].color);
-  cage.innerHTML = `<div class="cage-shaft"></div><div class="cage-gate left"></div><div class="cage-gate right"></div>
-    <div class="panel cage-sign"><small>&#9660; GOING DOWN &#9660;</small><b>-${fmt(from)} M</b>
-    <span>LEVEL ${level} &middot; ${run.rocks} rocks &middot; goal ${fmt(run.goal)}</span></div>`;
+  cage.innerHTML = `<div class="cage-glow"></div>
+    <div class="cage-lift"><i class="cage-rope"></i><i class="cage-lantern"></i>
+    <div class="panel cage-sign"><small>&#9660; NEXT STOP &#9660;</small><b>-${fmt(from)} M</b>
+    <span>LEVEL ${level} &middot; ${run.rocks} rocks &middot; goal ${fmt(run.goal)}</span></div></div>`;
+  for (let i = 0; i < 14; i++) {
+    const mote = document.createElement("i");
+    mote.className = "cage-mote";
+    mote.style.left = `${between(5, 95)}%`;
+    mote.style.animationDelay = `${-between(0, 4)}s`;
+    mote.style.animationDuration = `${between(3, 5.5)}s`;
+    cage.appendChild(mote);
+  }
   document.body.appendChild(cage);
-  const [left, right] = cage.querySelectorAll(".cage-gate");
   const counter = cage.querySelector("b");
-  const ride = reducedMotion ? 500 : 1700;
-  cage.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, fill: "forwards" });
-  left.animate([{ transform: "translateX(-100%)" }, { transform: "none" }], { duration: 350, easing: "steps(5)", fill: "forwards" });
-  right.animate([{ transform: "translateX(100%)" }, { transform: "none" }], { duration: 350, easing: "steps(5)", fill: "forwards" });
-  noise(0.12, { vol: 0.2, lp: 1200, delay: 0.33 });
-  metal(mineNote(0, -1), 0.5, { vol: 0.08, delay: 0.33, bright: 1.5 });
-  chain(8, 0.1);
-  cartRumble(ride / 1000 + 0.3);
+  const ride = reducedMotion ? 500 : RIDE_MS;
+  // The mine wall glides up behind the lift, eased like the lift itself
+  document.documentElement.style.setProperty("--depth", `${(level - 1) * 120}px`);
+  cage.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400, easing: "ease-out", fill: "forwards" });
+  // A soft creak, the winch humming, and a little music-box tune on the way down
+  chain(4, 0.05);
+  cartRumble(ride / 1000);
+  bellPhrase([0, 2, 4, 3, 2, 4, 5], 0.32, { octave: 1, vol: 0.025, delay: 0.3, dur: 1.2 });
   const startAt = performance.now();
   await new Promise((resolve) => {
     function tick(now) {
       const t = Math.min(1, (now - startAt) / ride);
-      counter.textContent = `-${fmt(from + (to - from) * t * t)} M`;
+      const eased = t * t * (3 - 2 * t);
+      counter.textContent = `-${fmt(Math.round(from + (to - from) * eased))} M`;
       if (t < 1) requestAnimationFrame(tick);
       else resolve();
     }
@@ -1783,13 +1862,12 @@ async function descend(level) {
     setTimeout(resolve, ride + 300);
   });
   counter.textContent = `-${fmt(to)} M`;
-  // Clunk: the cage hits the next landing
-  boom(0);
-  ding(0.06);
-  left.animate([{ transform: "none" }, { transform: "translateX(-100%)" }], { duration: 350, easing: "steps(5)", fill: "forwards" });
-  right.animate([{ transform: "none" }, { transform: "translateX(100%)" }], { duration: 350, easing: "steps(5)", fill: "forwards" });
-  cage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 450, delay: 250, fill: "forwards" });
-  await wait(720);
+  // A gentle bump and a ding: we've arrived
+  ding(0.05);
+  ding(0.03, 0.18);
+  sfx(90, 0.25, { type: "sine", vol: 0.12, to: 60 });
+  cage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 600, delay: 200, easing: "ease-in", fill: "forwards" });
+  await wait(820);
   cage.remove();
 }
 
@@ -2049,6 +2127,11 @@ function showLeaderboard(highlight) {
 
 /* ---------- Bag: sell finds ---------- */
 
+// One tab per everyday rarity; the fossil and mushroom collections share the secret tab
+const BAG_TABS = [
+  ...RARITY_GROUPS.slice(0, 5).map((name, r) => ({ name, symbol: RARITY_SYMBOLS[r], cls: `r${r}`, rarities: [r] })),
+  { name: "SECRET", symbol: "&#10067;", cls: "secret", rarities: [5, 6] },
+];
 let bagTab = 0;
 let bagSelected = null;
 
@@ -2065,17 +2148,26 @@ function renderBag() {
   const discovered = ITEMS.filter((i) => everFound(i.id) > 0).length;
   $("bag-count").textContent = discovered;
   $("bag-total").textContent = ITEMS.length;
-  $("bag-tabs").innerHTML = RARITY_GROUPS.map((g, r) => {
-    const group = ITEMS.filter((i) => i.rarity === r);
-    const found = group.filter((i) => everFound(i.id) > 0).length;
-    return `<button type="button" class="tab r${r} ${r === bagTab ? "on" : ""}" data-tab="${r}">${RARITY_SYMBOLS[r]} ${g} ${found}/${group.length}</button>`;
-  }).join("");
-  $("bag-grid").innerHTML = ITEMS.filter((i) => i.rarity === bagTab)
-    .map((i) => {
-      const known = everFound(i.id) > 0;
-      const cls = `item r${i.rarity}${known ? "" : " unknown"}${known && !available(i.id) ? " empty" : ""}${bagSelected === i.id ? " sel" : ""}`;
-      return `<button type="button" class="${cls}" data-id="${i.id}" ${known ? "" : "disabled"}>
-        <span class="gem">${known ? RARITY_SYMBOLS[i.rarity] : "?"}</span>${known ? i.name : "???"}<span class="qty">${known ? "x" + available(i.id) : ""}</span></button>`;
+  const foundOf = (rarities) => {
+    const group = ITEMS.filter((i) => rarities.includes(i.rarity));
+    return `${group.filter((i) => everFound(i.id) > 0).length}/${group.length}`;
+  };
+  $("bag-tabs").innerHTML = BAG_TABS.map(
+    (t, n) => `<button type="button" class="tab ${t.cls} ${n === bagTab ? "on" : ""}" data-tab="${n}">${t.symbol} ${t.name} ${foundOf(t.rarities)}</button>`
+  ).join("");
+  const rarities = BAG_TABS[bagTab].rarities;
+  $("bag-grid").innerHTML = rarities
+    .map((r) => {
+      // Tabs holding more than one collection get a heading per collection
+      const head = rarities.length > 1 ? `<h5 class="grid-head r${r}">${RARITY_SYMBOLS[r]} ${RARITY_GROUPS[r]} ${foundOf([r])}</h5>` : "";
+      return head + ITEMS.filter((i) => i.rarity === r)
+        .map((i) => {
+          const known = everFound(i.id) > 0;
+          const cls = `item r${i.rarity}${known ? "" : " unknown"}${known && !available(i.id) ? " empty" : ""}${bagSelected === i.id ? " sel" : ""}`;
+          return `<button type="button" class="${cls}" data-id="${i.id}" ${known ? "" : "disabled"}>
+            <span class="gem">${known ? RARITY_SYMBOLS[i.rarity] : "?"}</span>${known ? i.name : "???"}<span class="qty">${known ? "x" + available(i.id) : ""}</span></button>`;
+        })
+        .join("");
     })
     .join("");
   renderDetail();
@@ -2084,13 +2176,14 @@ function renderBag() {
 function renderDetail() {
   const box = $("bag-detail");
   const item = bagSelected && ITEM_BY_ID[bagSelected];
+  // The detail box always stays on screen under the list, waiting for a pick
   if (!item) {
-    box.hidden = true;
+    box.className = "detail";
+    box.innerHTML = `<p class="detail-empty">Tap a find above to read about it and sell it.</p>`;
     return;
   }
   const have = available(item.id);
   const wanted = neededBy(item.id);
-  box.hidden = false;
   box.className = `detail r${item.rarity}`;
   box.innerHTML = `<h4>${RARITY_SYMBOLS[item.rarity]} ${item.name} &middot; ${RARITY_NAMES[item.rarity]}</h4>
     <p>${item.desc}</p>
