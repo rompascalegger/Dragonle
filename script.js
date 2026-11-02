@@ -23,9 +23,11 @@ const topLevelEl = $("top-level");
 const driftEl = $("drift");
 const muteBtn = $("mute");
 const stageEl = $("stage");
+// Shakes and lurches move the floor, never the stage (which carries the fit-to-screen scale)
+const floorEl = document.querySelector(".floor");
 const darknessEl = $("darkness");
 
-const VERSION = "1.2.0";
+const VERSION = "1.6.0";
 
 // Ten tiers by the deepest level a run reaches: label, player title, verdict, color
 const TIERS = [
@@ -61,14 +63,15 @@ const depthText = (level) => `-${fmt(level * METERS_PER_LEVEL)} M`;
 // How dark it is: 0 at the first level, creeping toward 1 in the abyss
 const darkFor = (level) => 1 - 1 / (1 + (level - 1) * 0.12);
 // Pairs of eyes watching from the dark: one at the start, more on every level
-const eyesFor = (level) => Math.min(90, Math.round(1 + (level - 1) * 1.6));
+const eyesFor = (level) => Math.min(45, Math.round(1 + (level - 1) * 1.4));
 // Every level's goal is 15% above the last one's
 const goalFor = (level) => Math.floor(400 * Math.pow(1.15, level));
 // Holding on the rock swings this often
 const SWING_MS = 100;
-const RARITY_NAMES = ["COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY"];
+// Rarity 5 is Archeology (dinosaurs, only in fossil rocks), 6 is Mushrooms (only in mushroom rocks)
+const RARITY_NAMES = ["COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "ARCHEOLOGY", "MUSHROOM"];
 // One symbol per rarity, shown wherever a find appears
-const RARITY_SYMBOLS = ["◇", "◆", "✦", "❖", "✸"];
+const RARITY_SYMBOLS = ["◇", "◆", "✦", "❖", "✸", "⚱", "🍄"];
 
 // Balance on top of RogueMiner's numbers: hits land harder, a crit roll never drops below
 // 0.6x, and every hit in a row adds 4% (up to 3x at a 50 combo). A miss or a pause breaks it
@@ -78,10 +81,20 @@ const COMBO_CAP = 50;
 const COMBO_WINDOW_MS = 1500;
 // About one rock in 25 is a geode: double health, glittering, three boosted finds and lots of gold
 const GEODE_CHANCE = 0.04;
+// One rock in 100 is a fossil: a dinosaur in the stone, the only way to find one
+const FOSSIL_CHANCE = 0.01;
+const DINOSAURS = ITEMS.filter((i) => i.rarity === 5);
+// One rock in 200 is a mushroom growing out of the stone, the only place to pick one
+const MUSHROOM_CHANCE = 0.005;
+const MUSHROOMS = ITEMS.filter((i) => i.rarity === 6);
 // Finds of the plainer rarities come in small stacks
-const STACK_SIZES = [[1, 3], [1, 2], [1, 1], [1, 1], [1, 1]];
-const RARITY_GROUPS = ["STONES", "MINERALS", "GEMS", "PRECIOUS", "ELEMENTS"];
-const RARITY_COLORS = ["#c7c7c7", "#40d959", "#408cff", "#a64df2", "#ffa61a"];
+// A swing this close to the rock's center (in pit pixels) is a PERFECT hit: double damage
+const PERFECT_RADIUS = 12;
+// One rock in 300 is a pet rock with googly eyes. It has opinions
+const PET_CHANCE = 1 / 300;
+const STACK_SIZES = [[1, 3], [1, 2], [1, 1], [1, 1], [1, 1], [1, 1], [1, 1]];
+const RARITY_GROUPS = ["STONES", "MINERALS", "GEMS", "PRECIOUS", "ELEMENTS", "ARCHEOLOGY", "MUSHROOMS"];
+const RARITY_COLORS = ["#c7c7c7", "#40d959", "#408cff", "#a64df2", "#ffa61a", "#e8dcb8", "#ff4fd8"];
 const STAT_LABELS = {
   strength: "Strength",
   agility: "Agility",
@@ -234,7 +247,9 @@ let jokeIndex = Math.floor(Math.random() * 6);
 function nextJoke() {
   const band = depthBand(run ? run.level : 1);
   const lines = WHISPERS[band];
-  jokeEl.textContent = "\u2026 " + lines[jokeIndex++ % lines.length] + " \u2026";
+  // Up in the middle of the night? They noticed
+  const late = new Date().getHours() === 3 && Math.random() < 0.3;
+  jokeEl.textContent = "\u2026 " + (late ? "It's 3 AM. They're louder at 3 AM" : lines[jokeIndex++ % lines.length]) + " \u2026";
   jokeEl.classList.toggle("deep", band === 2);
   jokeEl.animate([{ opacity: 0 }, { opacity: 0.8 }], { duration: 1200, easing: "steps(6)" });
 }
@@ -253,6 +268,9 @@ let reverb = null;
 // and adds cave echo
 let pitch = 1;
 let echo = 0;
+// While tripping on a mushroom, every note wavers around the depth pitch
+let tripping = false;
+const soundPitch = () => (tripping ? pitch * (1 + 0.07 * Math.sin(performance.now() / 170)) : pitch);
 
 // Lazily creates the audio graph: everything -> compressor (keeps stacked fanfares from
 // clipping), with a send into a generated cave reverb for the epic stuff
@@ -303,8 +321,9 @@ function sfx(freq, dur, { type = "square", vol = 0.04, to = null, delay = 0, att
   const osc = ac.createOscillator();
   const gain = ac.createGain();
   osc.type = type;
-  osc.frequency.setValueAtTime(freq * pitch, t);
-  if (to) osc.frequency.exponentialRampToValueAtTime(to * pitch, t + dur);
+  const bend = soundPitch();
+  osc.frequency.setValueAtTime(freq * bend, t);
+  if (to) osc.frequency.exponentialRampToValueAtTime(to * bend, t + dur);
   if (attack) {
     gain.gain.setValueAtTime(0.0001, t);
     gain.gain.exponentialRampToValueAtTime(vol, t + attack);
@@ -324,11 +343,9 @@ function noise(dur, { vol = 0.1, delay = 0, hp = 1000, lp = 0, attack = 0, wet =
   const ac = audio();
   if (!ac) return;
   const t = ac.currentTime + delay;
-  const buffer = ac.createBuffer(1, Math.ceil(ac.sampleRate * dur), ac.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
   const src = ac.createBufferSource();
-  src.buffer = buffer;
+  src.buffer = noiseBuffer(ac);
+  src.loop = true;
   const filter = ac.createBiquadFilter();
   filter.type = lp ? "lowpass" : "highpass";
   filter.frequency.value = lp || hp;
@@ -343,7 +360,19 @@ function noise(dur, { vol = 0.1, delay = 0, hp = 1000, lp = 0, attack = 0, wet =
   }
   src.connect(filter).connect(gain).connect(master);
   send(gain, wet + echo);
-  src.start(t);
+  src.start(t, Math.random() * 1.5);
+  src.stop(t + Math.max(dur, attack + 0.05) + 0.05);
+}
+
+// Two seconds of white noise, made once and shared by every noisy sound
+let sharedNoise = null;
+function noiseBuffer(ac) {
+  if (!sharedNoise) {
+    sharedNoise = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+    const data = sharedNoise.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  return sharedNoise;
 }
 
 /* ---------- Mine instruments (all synthesized) ---------- */
@@ -521,6 +550,79 @@ const SOUND = {
     metal(mineNote(1, -1), 0.6, { vol: 0.05, wet: 0.5 });
     noise(0.2, { vol: 0.05, lp: 400 });
   },
+  perfect: () => {
+    metal(mineNote(12, 1), 0.6, { vol: 0.06, bright: 1.4, wet: 0.3 });
+    metal(mineNote(14, 1), 0.4, { vol: 0.03, delay: 0.06, wet: 0.3 });
+  },
+  chirp: () => {
+    for (let i = 0; i < 3; i++) sfx(2400, 0.07, { type: "sine", vol: 0.04, to: 3300, delay: i * 0.11 });
+  },
+  record: () => bellPhrase([5, 7, 9, 10, 12], 0.09, { vol: 0.05 }),
+  // A find hitting the cave floor: a pebble ticks, an element crashes. power < 1 for bounces
+  land: (r, power) => {
+    const p = power;
+    if (r === 0) {
+      noise(0.03, { vol: 0.07 * p, hp: 2500 });
+      sfx(380, 0.05, { type: "triangle", vol: 0.05 * p, to: 200 });
+    } else if (r === 1) {
+      metal(1800, 0.15, { vol: 0.03 * p, bright: 0.7, wet: 0.2 });
+      noise(0.04, { vol: 0.06 * p, lp: 800 });
+    } else if (r === 2) {
+      metal(2600, 0.4, { vol: 0.04 * p, wet: 0.3 });
+      metal(3900, 0.25, { vol: 0.02 * p, wet: 0.3 });
+    } else if (r === 3) {
+      sfx(180, 0.25, { type: "sine", vol: 0.22 * p, to: 80 });
+      metal(mineNote(9, 1), 0.9, { vol: 0.05 * p, wet: 0.4 });
+    } else if (r === 4) {
+      // An element: a heavy crash that rattles the cave
+      sfx(80, 0.9, { type: "sine", vol: 0.55 * p, to: 28, wet: 0.3 });
+      noise(0.6, { vol: 0.35 * p, lp: 900, wet: 0.3 });
+      noise(0.35, { vol: 0.18 * p, hp: 3000 });
+      metal(1200, 0.7, { vol: 0.07 * p, bright: 1.5, wet: 0.4 });
+      if (p > 0.5) for (let k = 0; k < 5; k++) noise(0.03, { vol: 0.05, delay: 0.2 + k * between(0.05, 0.1), hp: 2000 });
+    } else if (r === 5) {
+      // Bones: a clatter of dry knocks on a heavy thud
+      sfx(110, 0.3, { type: "sine", vol: 0.3 * p, to: 50 });
+      for (let k = 0; k < 6; k++) sfx(between(300, 700), 0.04, { type: "triangle", vol: 0.06 * p, delay: k * between(0.03, 0.06) });
+    } else {
+      // A mushroom: a soft, squishy plop with a little boing
+      sfx(300, 0.18, { type: "sine", vol: 0.12 * p, to: 90 });
+      noise(0.12, { vol: 0.08 * p, lp: 600 });
+      sfx(700, 0.2, { type: "sine", vol: 0.04 * p, to: 1400, delay: 0.05 });
+    }
+  },
+  // A mushroom appears: a bell that slides off its note, and a slow breath
+  shroom: () => {
+    for (const d of [1, 1.01]) sfx(mineNote(5, 1) * d, 1.4, { type: "sine", vol: 0.05, to: mineNote(8, 1), wet: 0.7 });
+    noise(1.2, { vol: 0.05, hp: 1200, attack: 0.6, wet: 0.6 });
+  },
+  // The trip: bells sliding up and down the mine scale, and a long whoosh
+  trip: () => {
+    for (let i = 0; i < 10; i++) {
+      const from = mineNote(i % 5 + 2, 1);
+      sfx(from, 0.5, { type: "sine", vol: 0.04, to: from * (i % 2 ? 1.5 : 0.66), delay: i * 0.12, wet: 0.7 });
+    }
+    noise(2.4, { vol: 0.08, hp: 700, attack: 1.2, wet: 0.7 });
+  },
+  // A giant footstep: a deep thump, the ground cracking, pebbles falling after
+  stomp: (i) => {
+    sfx(60, 0.6, { type: "sine", vol: 0.55, to: 26, wet: 0.3 });
+    noise(0.35, { vol: 0.3, lp: 160, wet: 0.4 });
+    noise(0.08, { vol: 0.1, hp: 1200 });
+    for (let k = 0; k < 4; k++) noise(0.03, { vol: 0.04, delay: 0.15 + k * between(0.05, 0.1), hp: 2000 });
+    if (i % 2) chain(3, 0.05);
+  },
+  // The roar: a growl that drops into the floor, breath tearing through it
+  roar: () => {
+    for (const d of [1, 1.013, 0.988]) sfx(130 * d, 1.8, { type: "sawtooth", vol: 0.07, to: 48, attack: 0.12, wet: 0.6 });
+    noise(1.7, { vol: 0.16, hp: 500, attack: 0.15, wet: 0.5 });
+    sfx(65, 1.8, { type: "sine", vol: 0.3, to: 32, attack: 0.1 });
+  },
+  fossil: () => {
+    for (let i = 0; i < 4; i++) noise(0.25, { vol: 0.05, hp: 2500, delay: i * 0.2, attack: 0.1 });
+    metal(mineNote(0, -2), 2.4, { vol: 0.12, delay: 0.1, wet: 0.7 });
+    choir(mineNote(0, -1), [0, 1, 7], 2.8, 0.3);
+  },
   geode: () => {
     bellPhrase([10, 11, 12, 13, 14], 0.05, { vol: 0.035 });
     ding(0.05, 0.3);
@@ -532,6 +634,23 @@ const SOUND = {
   trophy: () => bellPhrase([4, 5, 7, 9], 0.08, { vol: 0.04 }),
   deny: () => metal(mineNote(1, -1), 0.3, { vol: 0.04, bright: 0.3 }),
 };
+
+// The mine's background (drone, wind, drips, whispers, the distant work tune) can be
+// silenced on its own, keeping every game sound
+const ambienceBtn = $("ambience-btn");
+let ambienceOff = load("minele-ambience-off") === 1;
+function applyAmbience() {
+  ambienceBtn.classList.toggle("off", ambienceOff);
+  ambienceBtn.setAttribute("aria-pressed", String(!ambienceOff));
+}
+applyAmbience();
+ambienceBtn.addEventListener("click", () => {
+  ambienceOff = !ambienceOff;
+  save("minele-ambience-off", ambienceOff ? 1 : 0);
+  applyAmbience();
+  ambience.start();
+  SOUND.pop();
+});
 
 muteBtn.addEventListener("click", () => {
   muted = !muted;
@@ -546,8 +665,9 @@ muteBtn.addEventListener("click", () => {
 // Drawn at 50x50 pixels and shown at 150px, so every pixel is a chunky 3x3 block
 const ROCK_GRID = 50;
 const ROCK_PX = 150;
-// A tap this close to the rock's center hits (the blob is about 40 of 50 pixels wide)
-const HIT_RADIUS = 64;
+// A swing hits when it lands on the rock's shape (or within this many grid pixels of it),
+// so holes, gaps and spikes really count
+const HIT_SLACK = 2;
 const rctx = rockCanvas.getContext("2d");
 rockCanvas.width = ROCK_GRID;
 rockCanvas.height = ROCK_GRID;
@@ -556,6 +676,193 @@ let rock = null;
 
 // Specks in the stone hint at how lucky the rock is
 const SPECK_COLORS = ["#b0a090", "#b0a090", "#b0a090", "#40d959", "#40d959", "#408cff", "#408cff", "#a64df2", "#a64df2", "#ffcf4a"];
+
+// What the rock is made of: base, lit and shadowed color. Deeper levels favor the dark ones
+const MATERIALS = [
+  { name: "GRANITE", base: [112, 96, 80], light: [170, 152, 130], shadow: [62, 50, 40], depth: 0 },
+  { name: "SANDSTONE", base: [150, 110, 62], light: [200, 160, 100], shadow: [92, 62, 32], depth: 0 },
+  { name: "MARBLE", base: [176, 168, 160], light: [228, 222, 214], shadow: [118, 110, 104], depth: 0, veins: [120, 110, 120] },
+  { name: "SLATE", base: [78, 90, 104], light: [124, 138, 154], shadow: [40, 48, 58], depth: 0.1 },
+  { name: "IRONSTONE", base: [128, 62, 40], light: [184, 98, 66], shadow: [70, 30, 20], depth: 0.2 },
+  { name: "MOSSROCK", base: [80, 96, 60], light: [124, 148, 92], shadow: [42, 52, 30], depth: 0.2 },
+  { name: "BASALT", base: [58, 54, 58], light: [100, 96, 104], shadow: [30, 28, 32], depth: 0.35 },
+  { name: "OBSIDIAN", base: [38, 24, 48], light: [120, 86, 150], shadow: [14, 8, 20], depth: 0.5, shine: true },
+  { name: "BLOODSTONE", base: [92, 20, 22], light: [150, 40, 40], shadow: [44, 8, 10], depth: 0.6, veins: [40, 90, 50] },
+];
+// Crystal clusters come in gem colors
+const CRYSTALS = [
+  { name: "AMETHYST", base: [120, 70, 170], light: [190, 150, 235], shadow: [62, 30, 96], shine: true },
+  { name: "QUARTZ", base: [160, 190, 210], light: [225, 240, 250], shadow: [90, 110, 130], shine: true },
+  { name: "CITRINE", base: [200, 150, 40], light: [250, 214, 110], shadow: [120, 80, 10], shine: true },
+  { name: "JADE", base: [50, 140, 90], light: [120, 210, 150], shadow: [20, 76, 46], shine: true },
+];
+const BONE = { name: "BONE", base: [190, 178, 146], light: [230, 222, 196], shadow: [120, 108, 82] };
+const SHROOM = { name: "MUSHROOM", base: [176, 36, 150], light: [255, 120, 230], shadow: [96, 14, 84], shine: true };
+
+// Shapes, each a test on (dx, dy) from the center of the 50x50 grid, with its own random
+// parameters. weight = how common, depth = only from this darkness on, spin = turns as it wiggles
+const SHAPES = {
+  // A lumpy boulder: a circle bent by three harmonics
+  boulder: {
+    weight: 6,
+    name: "BOULDER",
+    make: () => ({ h: [2, 3, 5].map((k) => ({ k, amp: between(0.04, 0.12), ph: between(0, Math.PI * 2) })) }),
+    test: (dx, dy, p) => {
+      const a = Math.atan2(dy, dx);
+      let radius = 19.5;
+      for (const h of p.h) radius += Math.sin(a * h.k + h.ph) * h.amp * 19.5;
+      return Math.hypot(dx, dy) <= radius;
+    },
+  },
+  // A star of jagged spikes
+  shard: {
+    weight: 3,
+    name: "SHARD",
+    spin: true,
+    make: () => ({ k: range(4, 9), ph: between(0, Math.PI * 2), inner: between(9, 13) }),
+    test: (dx, dy, p) => {
+      const a = Math.atan2(dy, dx);
+      const spike = Math.pow(Math.max(0, Math.cos(p.k * a + p.ph)), 3);
+      return Math.hypot(dx, dy) <= p.inner + spike * (22 - p.inner);
+    },
+  },
+  // Pointed prisms growing from a base
+  crystal: {
+    weight: 2,
+    name: "CLUSTER",
+    make: () => ({
+      prisms: Array.from({ length: range(3, 6) }, () => ({ tilt: between(-0.75, 0.75), w: between(3.5, 6.5), len: between(15, 26) })),
+    }),
+    test: (dx, dy, p) => {
+      if (Math.hypot(dx, dy - 12) <= 9) return true;
+      for (const q of p.prisms) {
+        // Along the prism (u) and across it (v), from its foot at the bottom
+        const x = dx;
+        const y = 14 - dy;
+        const u = x * Math.sin(q.tilt) + y * Math.cos(q.tilt);
+        const v = x * Math.cos(q.tilt) - y * Math.sin(q.tilt);
+        if (u < 0 || u > q.len) continue;
+        const half = u > q.len - q.w ? (q.len - u) : q.w;
+        if (Math.abs(v) <= half) return true;
+      }
+      return false;
+    },
+  },
+  // A flat, chipped slab
+  slab: {
+    weight: 2,
+    name: "SLAB",
+    make: () => ({ tilt: between(-0.4, 0.4), w: between(18, 22), h: between(8, 12) }),
+    test: (dx, dy, p) => {
+      const x = dx * Math.cos(p.tilt) + dy * Math.sin(p.tilt);
+      const y = -dx * Math.sin(p.tilt) + dy * Math.cos(p.tilt);
+      return Math.abs(x) <= p.w && Math.abs(y) <= p.h && Math.abs(x) + Math.abs(y) * 1.6 <= p.w + p.h * 0.9;
+    },
+  },
+  // Two rocks fused together
+  twin: {
+    weight: 2,
+    name: "TWINS",
+    spin: true,
+    make: () => ({ a: between(0, Math.PI), r1: between(10, 13), r2: between(9, 12), gap: between(8, 10) }),
+    test: (dx, dy, p) => {
+      const ox = Math.cos(p.a) * p.gap;
+      const oy = Math.sin(p.a) * p.gap;
+      return Math.hypot(dx - ox, dy - oy) <= p.r1 || Math.hypot(dx + ox, dy + oy) <= p.r2;
+    },
+  },
+  // A crescent moon of stone
+  crescent: {
+    weight: 1.5,
+    name: "CRESCENT",
+    spin: true,
+    make: () => ({ ox: between(6, 9), oy: between(-6, -2) }),
+    test: (dx, dy, p) => Math.hypot(dx, dy) <= 20 && Math.hypot(dx - p.ox, dy - p.oy) > 15,
+  },
+  // A ring: swing at the hole and you hit nothing
+  ring: {
+    weight: 1.2,
+    name: "RING",
+    spin: true,
+    make: () => ({ hole: between(7, 10), lump: between(0, Math.PI * 2) }),
+    test: (dx, dy, p) => {
+      const d = Math.hypot(dx, dy);
+      return d >= p.hole && d <= 19 + Math.sin(Math.atan2(dy, dx) * 3 + p.lump) * 1.5;
+    },
+  },
+  // A tall stalagmite
+  pillar: {
+    weight: 1.5,
+    name: "STALAGMITE",
+    make: () => ({ tilt: between(-0.25, 0.25), base: between(8, 11) }),
+    test: (dx, dy, p) => {
+      const x = dx - dy * p.tilt;
+      if (dy < -22 || dy > 20) return false;
+      const width = p.base * ((dy + 22) / 42) + 1.5;
+      return Math.abs(x) <= width + Math.sin(dy * 0.9) * 1.2;
+    },
+  },
+  // An isometric block, shaded per face
+  cube: {
+    weight: 1.2,
+    name: "BLOCK",
+    spin: true,
+    make: () => ({}),
+    test: (dx, dy) => Math.abs(dx) <= 17 && Math.abs(dy) + Math.abs(dx) * 0.577 <= 20,
+  },
+  // A fossil curled into a spiral
+  ammonite: {
+    weight: 1,
+    name: "AMMONITE",
+    spin: true,
+    make: () => ({ turn: between(0, Math.PI * 2) }),
+    test: (dx, dy) => Math.hypot(dx, dy) <= 18,
+  },
+  // A pile of pebbles stuck together
+  cluster: {
+    weight: 1.5,
+    name: "PEBBLES",
+    make: () => ({ blobs: Array.from({ length: range(5, 8) }, () => ({ x: between(-12, 12), y: between(-12, 12), r: between(6, 10) })) }),
+    test: (dx, dy, p) => p.blobs.some((b) => Math.hypot(dx - b.x, dy - b.y) <= b.r),
+  },
+  // Deep down, some rocks look back at you
+  skull: {
+    weight: 2,
+    depth: 0.3,
+    name: "SKULL",
+    make: () => ({}),
+    test: (dx, dy) => {
+      const head = Math.hypot(dx / 1.05, dy + 4) <= 16;
+      const jaw = Math.abs(dx) <= 9 && dy >= 6 && dy <= 18;
+      const socket = Math.hypot(Math.abs(dx) - 6.5, dy + 2) <= 4;
+      const nose = dy >= 5 && dy <= 9 && Math.abs(dx) <= (dy - 4) * 0.6;
+      const teeth = dy >= 14 && dy <= 18 && Math.abs(dx) <= 8 && Math.round(dx) % 3 === 0;
+      return (head || jaw) && !socket && !nose && !teeth;
+    },
+  },
+};
+// The mushroom rock is never picked at random: only the 1-in-200 roll makes one
+SHAPES.mushroom = {
+  weight: 0,
+  name: "MUSHROOM",
+  make: () => ({}),
+  test: (dx, dy) => {
+    const cap = dy <= 1 && Math.pow(dx / 21, 2) + Math.pow((dy + 1) / 17, 2) <= 1;
+    const stem = dy > 0 && dy <= 20 && Math.abs(dx) <= 6 + (dy > 16 ? (dy - 16) * 0.9 : 0);
+    return cap || stem;
+  },
+};
+const SHAPE_NAMES = Object.keys(SHAPES);
+
+function pickWeighted(list, weight) {
+  const total = list.reduce((sum, x) => sum + weight(x), 0);
+  let roll = Math.random() * total;
+  for (const x of list) {
+    roll -= weight(x);
+    if (roll <= 0) return x;
+  }
+  return list[list.length - 1];
+}
 
 function makeRock() {
   // RogueMiner: three nested rolls make most rocks soft and a few very hard
@@ -568,24 +875,49 @@ function makeRock() {
   const difficulty = 1 + (rockLevel - 1) * 0.08 + (worldLevel - 1) * 0.15;
   const hardness = Math.max(1, Math.round(luck * difficulty));
   const geode = Math.random() < GEODE_CHANCE;
-  const hp = 100 * difficulty * (geode ? 2 : 1);
+  const fossil = !geode && Math.random() < FOSSIL_CHANCE;
+  const shroom = !geode && !fossil && Math.random() < MUSHROOM_CHANCE;
+  const pet = !geode && !fossil && !shroom && Math.random() < PET_CHANCE;
+  const hp = 100 * difficulty * (geode ? 2 : fossil || shroom ? 1.5 : pet ? 0.5 : 1);
 
   // Higher insight unlocks wilder ways to wiggle, from calm to frantic
   const unlocked = Math.min(PATTERNS.length, Math.max(1, Math.ceil(PATTERNS.length * clamp01(rockLevel / 100))));
 
-  // A lumpy outline: a circle bent by three random harmonics
-  const harmonics = [2, 3, 5].map((k) => ({ k, amp: between(0.04, 0.12), ph: between(0, Math.PI * 2) }));
+  // Shape and stone: deeper levels unlock the stranger ones
+  const dark = darkFor(run ? run.level : 1);
+  const shape = shroom ? "mushroom" : fossil || pet ? "boulder" : geode ? pick(["boulder", "crystal"]) : pickWeighted(SHAPE_NAMES.filter((s) => SHAPES[s].weight > 0 && (SHAPES[s].depth || 0) <= dark), (s) => SHAPES[s].weight);
+  const params = SHAPES[shape].make();
+  const material =
+    shroom ? SHROOM
+    : pet ? MATERIALS[0]
+    : fossil ? MATERIALS[1]
+    : shape === "skull" ? BONE
+    : shape === "crystal" || geode ? pick(CRYSTALS)
+    : pickWeighted(MATERIALS.filter((m) => m.depth <= dark + 0.05), (m) => 1 + (m.depth <= dark ? m.depth * 3 : 0));
+
+  // The shape becomes a 50x50 mask, used for drawing and for hit tests
+  const mask = new Uint8Array(ROCK_GRID * ROCK_GRID);
+  const cells = [];
+  for (let y = 0; y < ROCK_GRID; y++) {
+    for (let x = 0; x < ROCK_GRID; x++) {
+      if (SHAPES[shape].test(x - 24.5, y - 24.5, params)) {
+        mask[y * ROCK_GRID + x] = 1;
+        cells.push([x, y]);
+      }
+    }
+  }
+
   const specks = [];
   const speckCount = geode ? 46 : 4 + rarity * 2;
   for (let i = 0; i < speckCount; i++) {
     const color = geode ? pick(RARITY_COLORS.slice(1)) : SPECK_COLORS[Math.min(9, range(0, rarity))];
-    specks.push({ x: range(10, 40), y: range(10, 40), size: Math.random() < (geode ? 0.5 : 0.3) ? 2 : 1, color });
+    const [x, y] = pick(cells);
+    specks.push({ x, y, size: Math.random() < (geode ? 0.5 : 0.3) ? 2 : 1, color });
   }
-  // Cracks: random walks from the middle, revealed as the rock loses health
+  // Cracks: random walks from inside the rock, revealed as it loses health
   const cracks = [];
   for (let c = 0; c < 6; c++) {
-    let x = 25 + range(-4, 5);
-    let y = 25 + range(-4, 5);
+    let [x, y] = pick(cells);
     let a = between(0, Math.PI * 2);
     const path = [];
     for (let s = 0; s < 14; s++) {
@@ -597,17 +929,27 @@ function makeRock() {
     cracks.push(path);
   }
   // Harder rocks are darker
-  const shade = Math.max(0, 1 - Math.log10(hardness) * 0.32);
+  const shade = Math.max(0.25, 1 - Math.log10(hardness) * 0.32);
   return {
     hp,
     maxHp: hp,
     hardness,
-    rarity: geode ? 10 : rarity,
+    rarity: geode || fossil || shroom ? 10 : rarity,
+    fossil,
+    shroom,
+    pet,
     luck,
     geode,
+    shape,
+    params,
+    material,
+    mask,
+    name: geode ? "GEODE" : fossil ? "FOSSIL" : shroom ? "MUSHROOM" : pet ? "PET ROCK" : `${material.name} ${SHAPES[shape].name}`,
+    // Some shapes turn as they wiggle; the rest just rock back and forth a little
+    spin: SHAPES[shape].spin ? between(0.4, 1.1) * (Math.random() < 0.5 ? -1 : 1) : 0,
+    angle: between(-0.3, 0.3),
     pattern: range(0, unlocked),
     phase: between(0, Math.PI * 2),
-    harmonics,
     specks,
     cracks,
     shade,
@@ -618,12 +960,24 @@ function makeRock() {
 }
 
 function insideRock(r, x, y) {
-  const dx = x - 24.5;
-  const dy = y - 24.5;
-  const angle = Math.atan2(dy, dx);
-  let radius = 19.5;
-  for (const h of r.harmonics) radius += Math.sin(angle * h.k + h.ph) * h.amp * 19.5;
-  return Math.hypot(dx, dy) <= radius;
+  return x >= 0 && y >= 0 && x < ROCK_GRID && y < ROCK_GRID && r.mask[y * ROCK_GRID + x] === 1;
+}
+
+// Does a point in the pit land on the rock? Undo the rock's turn, then check its shape
+function hitsRock(px, py) {
+  const scale = ROCK_GRID / ROCK_PX;
+  const dx = px - rock.x;
+  const dy = py - rock.y;
+  const cos = Math.cos(-rock.angle);
+  const sin = Math.sin(-rock.angle);
+  const gx = Math.round((dx * cos - dy * sin) * scale + 24.5);
+  const gy = Math.round((dx * sin + dy * cos) * scale + 24.5);
+  for (let oy = -HIT_SLACK; oy <= HIT_SLACK; oy++) {
+    for (let ox = -HIT_SLACK; ox <= HIT_SLACK; ox++) {
+      if (insideRock(rock, gx + ox, gy + oy)) return true;
+    }
+  }
+  return false;
 }
 
 const mix = (a, b, t) => `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(",")})`;
@@ -632,20 +986,27 @@ function drawRock() {
   rctx.clearRect(0, 0, ROCK_GRID, ROCK_GRID);
   if (!rock) return;
   const r = rock;
-  const dark = [14, 10, 8];
-  const base = [112, 96, 80];
-  const light = [170, 152, 130];
-  const shadow = [62, 50, 40];
-  const body = mix(dark, base, r.shade);
-  const hi = mix(dark, light, r.shade);
-  const lo = mix(dark, shadow, r.shade);
+  const m = r.material;
+  const black = [14, 10, 8];
+  const body = mix(black, m.base, r.shade);
+  const hi = mix(black, m.light, r.shade);
+  const lo = mix(black, m.shadow, r.shade);
+  const isCube = r.shape === "cube";
   for (let y = 0; y < ROCK_GRID; y++) {
     for (let x = 0; x < ROCK_GRID; x++) {
       if (!insideRock(r, x, y)) continue;
-      // Light from the top left: edge pixels facing it are bright, the others dark
-      const upLeft = !insideRock(r, x - 2, y - 2);
-      const downRight = !insideRock(r, x + 2, y + 2);
-      rctx.fillStyle = upLeft ? hi : downRight ? lo : body;
+      if (isCube) {
+        // Three faces: lit top, plain left, shadowed right
+        const dx = x - 24.5;
+        const dy = y - 24.5;
+        const top = dy < 0 && dy + Math.abs(dx) * 0.577 < 0;
+        rctx.fillStyle = top ? hi : dx < 0 ? body : lo;
+      } else {
+        // Light from the top left: edge pixels facing it are bright, the others dark
+        const upLeft = !insideRock(r, x - 2, y - 2);
+        const downRight = !insideRock(r, x + 2, y + 2);
+        rctx.fillStyle = upLeft ? hi : downRight ? lo : body;
+      }
       rctx.fillRect(x, y, 1, 1);
       if (!insideRock(r, x - 1, y) || !insideRock(r, x + 1, y) || !insideRock(r, x, y - 1) || !insideRock(r, x, y + 1)) {
         rctx.fillStyle = "#080504";
@@ -653,10 +1014,84 @@ function drawRock() {
       }
     }
   }
+  // Marble and bloodstone have veins running through them
+  if (m.veins) {
+    rctx.fillStyle = mix(black, m.veins, r.shade);
+    for (let x = 0; x < ROCK_GRID; x++) {
+      const y = Math.round(24 + Math.sin(x * 0.35 + r.phase) * 7 + Math.sin(x * 0.9) * 2);
+      if (insideRock(r, x, y)) rctx.fillRect(x, y, 1, 1);
+    }
+  }
+  // A fossil's spiral
+  if (r.shape === "ammonite") {
+    rctx.fillStyle = mix(black, m.shadow, r.shade * 0.7);
+    for (let t = 0; t < 22; t += 0.08) {
+      const rad = 1 + t * 0.78;
+      const x = Math.round(24.5 + Math.cos(t + r.params.turn) * rad);
+      const y = Math.round(24.5 + Math.sin(t + r.params.turn) * rad);
+      if (insideRock(r, x, y)) rctx.fillRect(x, y, 1, 1);
+    }
+  }
+  // Glassy stones and crystals catch the lamp in streaks
+  if (m.shine) {
+    rctx.fillStyle = "rgba(255, 255, 255, .55)";
+    for (let i = 0; i < 6; i++) {
+      const x = 14 + i;
+      const y = 16 - i;
+      if (insideRock(r, x, y)) rctx.fillRect(x, y, 1, 1);
+      if (insideRock(r, x + 12, y + 14)) rctx.fillRect(x + 12, y + 14, 1, 1);
+    }
+  }
   for (const s of r.specks) {
     if (!insideRock(r, s.x, s.y)) continue;
     rctx.fillStyle = s.color;
     rctx.fillRect(s.x, s.y, s.size, s.size);
+  }
+  // A pet rock: two googly eyes, pupils rattling around every time it's drawn
+  if (r.pet) {
+    for (const ex of [18, 30]) {
+      rctx.fillStyle = "#080504";
+      rctx.fillRect(ex - 3, 17, 7, 7);
+      rctx.fillStyle = "#fff";
+      rctx.fillRect(ex - 2, 18, 5, 5);
+      rctx.fillStyle = "#000";
+      rctx.fillRect(ex - 1 + range(-1, 2), 19 + range(-1, 2), 2, 2);
+    }
+    rctx.fillStyle = "#3e3228";
+    rctx.fillRect(21, 29, 7, 1);
+    rctx.fillRect(20, 28, 1, 1);
+    rctx.fillRect(28, 28, 1, 1);
+  }
+  // A mushroom: a pale stem under the cap, and glowing spots
+  if (r.shroom) {
+    for (let y = 26; y < ROCK_GRID; y++) {
+      for (let x = 0; x < ROCK_GRID; x++) {
+        if (!insideRock(r, x, y)) continue;
+        const edge = !insideRock(r, x - 1, y) || !insideRock(r, x + 1, y) || !insideRock(r, x, y + 1);
+        rctx.fillStyle = edge ? "#080504" : x < 24 ? "#f0e6d0" : "#c8b8a0";
+        rctx.fillRect(x, y, 1, 1);
+      }
+    }
+    rctx.fillStyle = "#fff6c0";
+    for (const [sx, sy] of [[16, 14], [24, 10], [32, 15], [12, 20], [27, 18], [37, 21], [20, 21]]) rctx.fillRect(sx, sy, 2, 2);
+  }
+  // A fossil: a big bone showing through the sandstone, knobs at both ends
+  if (r.fossil) {
+    rctx.fillStyle = "#efe4c4";
+    for (let i = 0; i < 22; i++) {
+      const x = 14 + i;
+      const y = Math.round(30 - i * 0.45);
+      rctx.fillRect(x, y, 1, 3);
+    }
+    for (const [cx, cy] of [[13, 29], [13, 33], [36, 19], [36, 23]]) rctx.fillRect(cx - 1, cy - 1, 3, 3);
+    rctx.fillStyle = "#b8a882";
+    for (let i = 0; i < 22; i += 3) rctx.fillRect(14 + i, Math.round(32 - i * 0.45), 1, 1);
+  }
+  // A skull's sockets glow, like everything else down here
+  if (r.shape === "skull") {
+    rctx.fillStyle = "#ff3b2f";
+    rctx.fillRect(17, 22, 2, 1);
+    rctx.fillRect(30, 22, 2, 1);
   }
   // Cracks grow as health drops
   const damage = 1 - Math.max(0, r.hp) / r.maxHp;
@@ -709,11 +1144,14 @@ function frame(now) {
     const half = ROCK_PX / 2;
     rock.x = pitW / 2 + ox * Math.max(0, pitW / 2 - half);
     rock.y = pitH / 2 + oy * Math.max(0, pitH / 2 - half);
+    // Spinning shapes turn with the wiggle; the rest rock back and forth
+    if (rock.spin) rock.angle += dt * rock.spin * speed * 1.6;
+    else rock.angle = 0.18 * Math.sin(rock.phase * 0.8);
     knock *= 0.8;
     const jitter = knock > 0.5 ? (Math.random() - 0.5) * knock : 0;
-    rockCanvas.style.transform = `translate(${rock.x - half + jitter}px, ${rock.y - half + jitter}px)`;
+    rockCanvas.style.transform = `translate(${rock.x - half + jitter}px, ${rock.y - half + jitter}px) rotate(${rock.angle.toFixed(3)}rad)`;
   }
-  if (frameCount++ % 4 === 0) lookAt();
+  if (frameCount++ % 8 === 0) lookAt();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -761,8 +1199,7 @@ for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
 
 function swing() {
   if (phase !== "mining" || !rock || rock.broken || !pointer) return;
-  const dist = Math.hypot(pointer.x - rock.x, pointer.y - rock.y);
-  if (dist > HIT_RADIUS) {
+  if (!hitsRock(pointer.x, pointer.y)) {
     SOUND.miss();
     breakCombo();
     const now = performance.now();
@@ -818,35 +1255,52 @@ function shake(el, power, duration = 260) {
   el.animate(frames, { duration, easing: "steps(6)" });
 }
 
-function hit() {
+function hit(auto = false) {
   // RogueMiner: damage from strength and pickaxe against hardness, agility steadies it,
   // and three nested rolls pick a crit level (0 = a weak swing, 8 = a huge smash)
   const now = performance.now();
   if (now - lastHitAt > COMBO_WINDOW_MS) combo = 0;
   lastHitAt = now;
-  combo++;
+  // Only hand swings build a combo
+  if (auto) combo = 0;
+  else combo++;
   const base = (stat("strength") * 10 + stat("pickaxe") * 100) / rock.hardness;
   const variance = between(0.9, 1.1) + stat("agility") * 0.01;
   const c1 = range(1, 10);
   const c2 = range(1, c1);
   const c3 = range(1, c2);
   const crit = range(0, c3);
-  const damage = base * variance * ((crit + 1.5) / 2.5) * comboMult() * DAMAGE_BOOST;
+  const perfect = !auto && Math.hypot(pointer.x - rock.x, pointer.y - rock.y) <= PERFECT_RADIUS;
+  const damage = base * variance * ((crit + 1.5) / 2.5) * comboMult() * DAMAGE_BOOST * (perfect ? 2 : 1) * (fever ? 2 : 1);
 
+  const hpBefore = rock.hp;
   rock.hp -= damage;
+  // Smashing a rock with three times what it had left is an OVERKILL
+  if (rock.hp <= 0 && damage >= hpBefore * 3) rock.overkill = true;
   run.hits++;
   run.bestHit = Math.max(run.bestHit, damage);
   run.bestCombo = Math.max(run.bestCombo || 0, combo);
   knock = 4 + crit * 3;
   SOUND.hit(crit, combo);
   floatText(pointer.cx, pointer.cy - 20, fmt(Math.max(1, damage)), `c${crit}`);
-  burst(pointer.cx, pointer.cy, 3 + crit * 2, ["#706050", "#aa9882", "#3e3228", ...(crit >= 4 ? ["#ffcf4a"] : [])], 0.6);
+  burst(pointer.cx, pointer.cy, 2 + crit, rainbowPick ? ["#ff4f4f", "#ffd84a", "#4fff7a", "#4fc8ff", "#c84fff"] : ["#706050", "#aa9882", "#3e3228", ...(crit >= 4 ? ["#ffcf4a"] : [])], 0.6);
+  if (perfect) {
+    SOUND.perfect();
+    floatText(pointer.cx, pointer.cy - 50, "PERFECT!", "perfect");
+    fxEl("shock", pointer.cx, pointer.cy, 4, 900).style.setProperty("--ss", 5);
+  }
+  if (fever) {
+    addGold(1);
+    if (run.hits % 3 === 0) floatText(pointer.cx + 30, pointer.cy, "+1 G", "gold");
+  }
+  if (!auto && Math.random() < (rock.pet ? 0.35 : 0.025 + (crit >= 4 ? 0.04 : 0))) rockSays(pick(rock.pet ? PET_LINES : ROCK_LINES));
   if (crit >= 4) shake(document.querySelector(".table"), 2 + crit);
   if (crit >= 5) {
     freezeUntil = now + 90;
     showToast(crit >= 7 ? "MEGA CRIT!" : "CRIT!", 4 + crit / 2);
   }
-  if (combo % 10 === 0) {
+  if (combo === 50) startFever();
+  if (combo && combo % 10 === 0) {
     SOUND.comboUp(combo);
     showToast(`${RARITY_SYMBOLS[Math.min(4, combo / 10 - 1)]} COMBO x${combo} ${RARITY_SYMBOLS[Math.min(4, combo / 10 - 1)]}`, Math.min(9, 3 + combo / 10));
   }
@@ -855,6 +1309,36 @@ function hit() {
   renderHp();
   if (rock.hp <= 0) breakRock();
 }
+
+/* ---------- Auto-mine ---------- */
+
+// The pickaxe swings itself, but slowly and without a combo: hand mining stays far faster
+const AUTO_SWING_MS = 400;
+const autoBtn = $("auto-btn");
+let autoMine = load("minele-automine") === 1;
+
+function applyAutoMine() {
+  autoBtn.classList.toggle("on", autoMine);
+  autoBtn.setAttribute("aria-pressed", String(autoMine));
+  autoBtn.innerHTML = `&#9935; AUTO-MINE: ${autoMine ? "ON" : "OFF"}`;
+  updateHint();
+}
+
+autoBtn.addEventListener("click", () => {
+  autoMine = !autoMine;
+  save("minele-automine", autoMine ? 1 : 0);
+  applyAutoMine();
+  SOUND.pop();
+});
+
+setInterval(() => {
+  // A hand on the rock takes over from the auto swing
+  if (!autoMine || holding || phase !== "mining" || !rock || rock.broken) return;
+  const rect = pit.getBoundingClientRect();
+  const scale = rect.width / Math.max(1, pit.offsetWidth);
+  pointer = { x: rock.x, y: rock.y, cx: rect.left + rock.x * scale, cy: rect.top + rock.y * scale };
+  hit(true);
+}, AUTO_SWING_MS);
 
 /* ---------- Rarity effects: the rarer, the crazier ---------- */
 
@@ -892,8 +1376,8 @@ function symbolBurst(x, y, rarity, count, rain = false) {
 async function rarityFX(item, x, y) {
   const r = item.rarity;
   const sym = RARITY_SYMBOLS[r];
-  if (r === 4) {
-    // Legendary: everything stops, the lamp dies, then the find erupts in gold
+  if (r >= 4) {
+    // Legendary and archeology: everything stops, the lamp dies, then the find erupts in gold
     freezeUntil = performance.now() + 900;
     const dark = fxEl("blackout", x, y, r, 1100);
     dark.style.setProperty("--bx", `${x}px`);
@@ -902,28 +1386,171 @@ async function rarityFX(item, x, y) {
     await wait(650);
   }
   floatText(x, y - 70, `${sym} ${item.name} ${sym}`, `loot r${r}`);
-  SOUND.drop(r);
-  if (r === 0) burst(x, y, 8, ["#c7c7c7", "#8a7660"], 0.5);
+  // The landing is heard from the falling token; rarer finds also ring a bell phrase
+  if (r >= 2) SOUND.drop(r);
   if (r >= 1) fxEl("shock", x, y, r, 900).style.setProperty("--ss", 4 + r * 3);
-  if (r === 1) burst(x, y, 16, ["#40d959", "#8ac25a"], 0.7);
   if (r >= 2) {
-    fxEl("beam", x, y, r, 1600).style.setProperty("--bw", `${16 + r * 14}px`);
-    symbolBurst(x, y, r, 4 + r * 4);
+    fxEl("beam", x, y, r, 1600).style.setProperty("--bw", `${16 + Math.min(r, 4) * 14}px`);
+    symbolBurst(x, y, r, Math.min(12, 3 + r * 2));
   }
   if (r >= 3) {
     fxEl("rarity-flash", 0, 0, r, 800);
     setTimeout(() => fxEl("shock", x, y, r, 900).style.setProperty("--ss", 18), 160);
-    showToast(`${sym} ${RARITY_NAMES[r]} ${sym}\n${item.name.toUpperCase()}`, r === 4 ? 9 : 7, true);
-    sparkles(x, y, r === 4 ? 60 : 30);
-    lurch(r === 4);
-    setMessage(r === 4 ? "> it glows. everything down here saw it" : "> it glitters. the eyes noticed too", "eerie");
+    showToast(`${sym} ${RARITY_NAMES[r]} ${sym}\n${item.name.toUpperCase()}`, r >= 4 ? 9 : 7, true);
+    sparkles(x, y, r >= 4 ? 30 : 16);
+    lurch(r >= 4);
+    setMessage(
+      r === 6 ? `> ${item.name.toLowerCase()}. the walls are breathing. the colors are wrong`
+      : r === 5 ? `> ${item.name.toLowerCase()}. it has been waiting down here for millions of years`
+      : r === 4 ? "> it glows. everything down here saw it"
+      : "> it glitters. the eyes noticed too",
+      "eerie"
+    );
   }
-  if (r === 4) {
+  if (r === 5) {
+    burst(x, y, 30, ["#e8dcb8", "#c8b890", "#8a7660", "#5a4632"], 1.2);
+    dinoStomp();
+  }
+  if (r === 6) startTrip();
+  if (r >= 4) {
     fxEl("rays", x, y, r, 2600);
     setTimeout(() => fxEl("shock", x, y, r, 900).style.setProperty("--ss", 30), 320);
-    symbolBurst(x, y, r, 40, true);
-    shake(stageEl, 10, 600);
+    symbolBurst(x, y, r, 18, true);
+    shake(floorEl, 10, 600);
   }
+}
+
+/* ---------- The find drops out of the rock ---------- */
+
+// The find tumbles out as its symbol, bounces on the cave floor (each bounce heard, louder
+// for heavier finds), then flies into the bag
+function dropToken(item, x, y) {
+  const r = item.rarity;
+  const el = fxEl("drop-token", x, y, r, 1700);
+  el.textContent = RARITY_SYMBOLS[r];
+  el.style.fontSize = `${18 + Math.min(r, 4) * 4}px`;
+  const pitRect = pit.getBoundingClientRect();
+  const floor = Math.max(y + 20, pitRect.bottom - 16) - y;
+  const dx = between(-50, 50);
+  const at = (px, py, s = 1, rot = 0) => `translate(calc(-50% + ${px}px), calc(-50% + ${py}px)) scale(${s}) rotate(${rot}deg)`;
+  el.animate(
+    [
+      { transform: at(0, 0, 0.4), easing: "ease-out" },
+      { transform: at(dx * 0.4, -70, 1, 90), offset: 0.22, easing: "ease-in" },
+      { transform: at(dx, floor, 1.1, 200), offset: 0.48, easing: "ease-out" },
+      { transform: at(dx * 1.2, floor - 26, 1, 260), offset: 0.62, easing: "ease-in" },
+      { transform: at(dx * 1.35, floor, 1, 330), offset: 0.76 },
+      { transform: at(dx * 1.35, floor, 1, 330) },
+    ],
+    { duration: 1000, fill: "forwards" }
+  );
+  const floorY = y + floor;
+  setTimeout(() => {
+    SOUND.land(r, 1);
+    burst(x + dx, floorY, r >= 4 ? 14 : 5, ["#8a7660", "#5a4632", RARITY_COLORS[r]], 0.5);
+    if (r >= 4) shake(document.querySelector(".table"), 8, 300);
+  }, 480);
+  setTimeout(() => SOUND.land(r, 0.35), 760);
+  // Into the bag
+  setTimeout(() => {
+    const bag = centerOf($("bag-btn"));
+    el.animate(
+      [{ transform: at(dx * 1.35, floor, 1, 330), opacity: 1 }, { transform: at(bag.x - x, bag.y - y, 0.3, 720), opacity: 0.2 }],
+      { duration: 450, easing: "ease-in", fill: "forwards" }
+    );
+    setTimeout(() => bump($("bag-btn")), 430);
+  }, 1150);
+}
+
+/* ---------- The mushroom trip ---------- */
+
+// A picked mushroom: for a few seconds the colors melt, the mine wobbles and every sound bends
+let tripTimer = null;
+function startTrip() {
+  tripping = true;
+  document.documentElement.classList.add("trip");
+  SOUND.trip();
+  clearTimeout(tripTimer);
+  tripTimer = setTimeout(() => {
+    tripping = false;
+    document.documentElement.classList.remove("trip");
+  }, reducedMotion ? 3000 : 8000);
+}
+
+/* ---------- The dinosaur stomp ---------- */
+
+// A dug-up dinosaur walks again: a huge shadow tyrant with one glowing eye stomps across
+// the mine. Every step shakes the screen and kicks up dust, and every eye in the dark hides.
+// X = body, O = eye; two leg frames take turns
+const DINO_BODY = [
+  "...............XXXXXXX..",
+  "..............XXXOXXXXX.",
+  "..............XXXXXXXXXX",
+  "..............XXXXX.X.X.",
+  "..............XXXXXXXX..",
+  "X............XXXXXX.....",
+  "XX..........XXXXXXXX....",
+  ".XX........XXXXXXX.XX...",
+  "..XXX.....XXXXXXXX..X...",
+  "...XXXXXXXXXXXXXXX......",
+  "....XXXXXXXXXXXXXX......",
+  ".....XXXXXXXXXXXX.......",
+  "......XXXXXXXXXX........",
+];
+const DINO_LEGS = [
+  ["......XXXX...XXX........", ".....XXX......XXX.......", ".....XX........XX.......", "....XXX.......XXXX......"],
+  ["........XXXXXXX.........", "........XXX..XX.........", "........XX...XX.........", ".......XXX..XXX........."],
+];
+const DINO_CELL = 4;
+
+function drawDino(canvas, frame) {
+  const rows = DINO_BODY.concat(DINO_LEGS[frame]);
+  canvas.width = rows[0].length * DINO_CELL;
+  canvas.height = rows.length * DINO_CELL;
+  const g = canvas.getContext("2d");
+  rows.forEach((row, y) => {
+    [...row].forEach((c, x) => {
+      if (c === ".") return;
+      g.fillStyle = c === "O" ? "#ff3b2f" : "#120c08";
+      g.fillRect(x * DINO_CELL, y * DINO_CELL, DINO_CELL, DINO_CELL);
+    });
+  });
+}
+
+let stomping = false;
+async function dinoStomp() {
+  if (stomping) return;
+  stomping = true;
+  const dino = document.createElement("canvas");
+  dino.className = "stomp-dino";
+  drawDino(dino, 0);
+  document.body.appendChild(dino);
+  // The watchers hide while it passes
+  eyesEl.classList.add("flee");
+  pitEyesEl.classList.add("flee");
+  const steps = reducedMotion ? 3 : 9;
+  const stepMs = 420;
+  const walk = dino.animate([{ transform: "translateX(-60vw)" }, { transform: "translateX(110vw)" }], {
+    duration: steps * stepMs,
+    easing: "linear",
+    fill: "forwards",
+  });
+  for (let i = 0; i < steps; i++) {
+    drawDino(dino, i % 2);
+    // Down comes the foot
+    const rect = dino.getBoundingClientRect();
+    const footX = rect.left + rect.width * (i % 2 ? 0.42 : 0.3);
+    SOUND.stomp(i);
+    shake(floorEl, 9, 260);
+    burst(footX, innerHeight - 10, 18, ["#8a7660", "#5a4632", "#c8b890"], 0.9);
+    if (i === Math.floor(steps / 2)) SOUND.roar();
+    await wait(stepMs);
+  }
+  await walk.finished.catch(() => {});
+  dino.remove();
+  eyesEl.classList.remove("flee");
+  pitEyesEl.classList.remove("flee");
+  stomping = false;
 }
 
 // Coins fly from the rock into the gold counter, one tick each
@@ -955,21 +1582,36 @@ async function breakRock() {
   const r = rock;
   const at = rockCenter();
   SOUND.crumble();
-  burst(at.x, at.y, 40, ["#706050", "#aa9882", "#3e3228", "#080504", RARITY_COLORS[Math.min(4, Math.floor(r.rarity / 2.5))]]);
+  burst(at.x, at.y, 22, ["#706050", "#aa9882", "#3e3228", "#080504", RARITY_COLORS[Math.min(4, Math.floor(r.rarity / 2.5))]]);
   rockCanvas.animate([{ opacity: 1, filter: "brightness(2)" }, { opacity: 0, filter: "brightness(1)" }], { duration: 250, fill: "forwards" });
 
   // Score: RogueMiner's 80 per rock, raised by dimension, luck and player power
   const worldMult = 1 + (stat("worldLevel") - 1) * 0.2;
   const luckMult = 1 + stat("luck") * 0.01;
   const gain = Math.round(80 * worldMult * luckMult * (stat("power") / 100) * between(0.75, 1.25));
-  addScore(gain * (r.geode ? 3 : 1));
-  floatText(at.x, at.y - 30, `+${fmt(gain * (r.geode ? 3 : 1))}`, "gold");
+  const bonus = r.geode ? 3 : r.fossil ? 5 : r.shroom ? 8 : 1;
+  // Style points: overkill pays a quarter more score, a quick break pays extra gold
+  const overkill = r.overkill ? 1.25 : 1;
+  const quick = performance.now() - r.spawnedAt < 1500;
+  addScore(Math.round(gain * bonus * overkill));
+  floatText(at.x, at.y - 30, `+${fmt(gain * bonus * overkill)}`, "gold");
+  if (r.overkill) {
+    showToast("OVERKILL!", 8);
+    unlockAch("secret_overkill");
+  }
+  if (quick) floatText(at.x + 50, at.y - 10, "QUICK! +GOLD", "gold");
+  if (r.pet) {
+    run.rocks += 3;
+    showToast("PET ROCK...\n+3 ROCKS. MONSTER.", 5, true);
+    setMessage("> pebbles is gone. you monster. (+3 rocks)", "eerie");
+    unlockAch("secret_pet");
+  }
   run.rocks--;
   run.mined++;
   state.stats.minedStones++;
 
   // Gold straight from the rock: more from luckier rocks and deeper levels, a pile from geodes
-  const gold = Math.max(1, Math.round((1 + r.rarity * 0.4) * (1 + (run.level - 1) * 0.15) * between(0.8, 1.2) * (r.geode ? 6 : 1)));
+  const gold = Math.max(1, Math.round((1 + r.rarity * 0.4) * (1 + (run.level - 1) * 0.15) * between(0.8, 1.2) * (r.geode ? 6 : r.fossil ? 10 : r.shroom ? 15 : 1) * (quick ? 1.5 : 1)));
   coinsTo(at.x, at.y, gold);
 
   // A geode holds three finds, rolled with extra luck; a plain rock one
@@ -977,12 +1619,16 @@ async function breakRock() {
   for (let d = 0; d < drops; d++) {
     const item = rollLoot(r, r.geode ? 0.35 : 0);
     const [lo, hi] = STACK_SIZES[item.rarity];
-    const n = range(lo, hi + 1);
+    // A gold vein doubles every find
+    const n = range(lo, hi + 1) * (run.vein > 0 ? 2 : 1);
     addItem(item.id, n);
     run.finds[item.id] = (run.finds[item.id] || 0) + n;
-    await wait(d ? 420 : 180);
-    await rarityFX(n > 1 ? { ...item, name: `${item.name} x${n}` } : item, at.x + (d - (drops - 1) / 2) * 60, at.y);
+    await wait(d ? 420 : 120);
+    const dropX = at.x + (d - (drops - 1) / 2) * 60;
+    dropToken(item, dropX, at.y);
+    await rarityFX(n > 1 ? { ...item, name: `${item.name} x${n}` } : item, dropX, at.y);
   }
+  if (run.vein > 0) run.vein--;
   renderRun();
   checkAchievements();
   persist();
@@ -994,6 +1640,7 @@ async function breakRock() {
     return;
   }
   spawnRock();
+  tickEvents();
 }
 
 function rockCenter() {
@@ -1004,6 +1651,8 @@ function rockCenter() {
 // RogueMiner's loot table: every rarity always has a chance, and luck (the rock's, its
 // rarity, insight and the player's) slides all of them toward an even 20% each
 function rollLoot(r, boost = 0) {
+  if (r.fossil) return pick(DINOSAURS);
+  if (r.shroom) return pick(MUSHROOMS);
   const progress = clamp01((r.luck / 50 + r.rarity / 10 + stat("rockLevel") / 100 + stat("luck") / 1601) / 4 + boost);
   const chances = [
     [4, lerp(0.001, 0.2, progress)],
@@ -1035,16 +1684,34 @@ function addScore(points) {
 
 function spawnRock() {
   rock = makeRock();
+  rock.spawnedAt = performance.now();
   drawRock();
   rockCanvas.getAnimations().forEach((a) => a.cancel());
   // Scale, not transform: the transform is the rock's position, set every frame
   rockCanvas.animate([{ scale: "0.2", opacity: 0 }, { scale: "1", opacity: 1 }], { duration: 200, easing: "steps(4)" });
   hardnessEl.textContent = rock.hardness;
   // Lucky rocks glow in the color of the finds they're likely to hold
-  const glow = rock.geode ? 4 : rock.rarity >= 10 ? 4 : rock.rarity >= 9 ? 3 : rock.rarity >= 7 ? 2 : -1;
-  rarityEl.textContent = rock.geode ? "✸ GEODE ✸" : `${rock.rarity}/10${glow >= 0 ? " " + RARITY_SYMBOLS[glow] : ""}`;
+  const glow = rock.shroom ? 6 : rock.fossil ? 5 : rock.geode ? 4 : rock.rarity >= 10 ? 4 : rock.rarity >= 9 ? 3 : rock.rarity >= 7 ? 2 : -1;
+  rarityEl.textContent = rock.shroom ? "🍄 MUSHROOM 🍄" : rock.fossil ? "⚱ FOSSIL ⚱" : rock.geode ? "✸ GEODE ✸" : `${rock.rarity}/10${glow >= 0 ? " " + RARITY_SYMBOLS[glow] : ""}`;
   rockCanvas.style.setProperty("--aura", glow >= 0 ? RARITY_COLORS[glow] : "transparent");
   rockCanvas.classList.toggle("geode", rock.geode);
+  rockCanvas.classList.toggle("fossil", rock.fossil);
+  rockCanvas.classList.toggle("shroom", rock.shroom);
+  if (rock.pet) {
+    showToast("A PET ROCK!\nIT'S LOOKING AT YOU", 4, true);
+    setTimeout(() => rockSays("hi!"), 600);
+  }
+  if (rock.shroom) {
+    SOUND.shroom();
+    showToast("🍄 A MUSHROOM 🍄\nGROWING OUT OF THE STONE", 9, true);
+    startle(2000);
+  }
+  if (rock.fossil) {
+    SOUND.fossil();
+    showToast("⚱ FOSSIL ⚱\nSOMETHING IS IN THE STONE", 9, true);
+    pulseDark();
+    startle(2000);
+  }
   if (rock.geode) {
     SOUND.geode();
     showToast("✸ GEODE ✸\nCRACK IT OPEN", 8);
@@ -1128,9 +1795,9 @@ async function descend(level) {
 
 // A rare find: the floor drops a little, the lamp gutters, every eye turns your way
 function lurch(legendary) {
-  stageEl.classList.remove("lurch");
-  void stageEl.offsetWidth;
-  stageEl.classList.add("lurch");
+  floorEl.classList.remove("lurch");
+  void floorEl.offsetWidth;
+  floorEl.classList.add("lurch");
   pulseDark();
   startle(legendary ? 3200 : 1600);
   if (legendary) surgeEyes(14);
@@ -1159,6 +1826,14 @@ function setDepth(level) {
     topLevel = level;
     topLevelEl.textContent = depthText(topLevel);
     bump(topLevelEl);
+    // Deeper than ever before
+    if (run && level > 1) {
+      setTimeout(() => {
+        showToast(`NEW RECORD\n${depthText(level)}`, 8, true);
+        SOUND.record();
+        sparkles(innerWidth / 2, innerHeight * 0.4, 30);
+      }, 1400);
+    }
   }
 }
 
@@ -1389,6 +2064,7 @@ function neededBy(id) {
 function renderBag() {
   const discovered = ITEMS.filter((i) => everFound(i.id) > 0).length;
   $("bag-count").textContent = discovered;
+  $("bag-total").textContent = ITEMS.length;
   $("bag-tabs").innerHTML = RARITY_GROUPS.map((g, r) => {
     const group = ITEMS.filter((i) => i.rarity === r);
     const found = group.filter((i) => everFound(i.id) > 0).length;
@@ -1590,7 +2266,11 @@ function renderAchCount() {
 function renderAchievements() {
   $("ach-list").innerHTML = ACHIEVEMENTS.slice()
     .sort((a, b) => Number(!!state.ach[b.id]) - Number(!!state.ach[a.id]))
-    .map((a) => `<div class="ach ${state.ach[a.id] ? "on" : ""}"><b>${state.ach[a.id] ? "&#10004; " : ""}${a.name}</b>${a.desc}</div>`)
+    .map((a) => {
+      const got = !!state.ach[a.id];
+      const hidden = a.secret && !got;
+      return `<div class="ach ${got ? "on" : ""}"><b>${got ? "&#10004; " : ""}${hidden ? "??? (secret)" : a.name}</b>${hidden ? "Keep digging. Or poking." : a.desc}</div>`;
+    })
     .join("");
 }
 
@@ -1619,7 +2299,7 @@ function renderHp() {
   if (!rock) return;
   const left = Math.max(0, rock.hp);
   hpFill.style.width = `${(left / rock.maxHp) * 100}%`;
-  hpText.textContent = left > 0 ? `${fmt(Math.ceil(left))} / ${fmt(rock.maxHp)} HP` : "DESTROYED!";
+  hpText.textContent = left > 0 ? `${rock.name} · ${fmt(Math.ceil(left))} / ${fmt(rock.maxHp)} HP` : "DESTROYED!";
 }
 
 function bump(el) {
@@ -1664,6 +2344,7 @@ function floatText(x, y, text, cls = "") {
   el.className = `float ${cls}`;
   el.textContent = text;
   el.style.left = `${x + (Math.random() - 0.5) * 30}px`;
+  if (rainbowPick && /^c\d/.test(cls)) el.style.color = `hsl(${Math.floor(Math.random() * 360)}, 100%, 65%)`;
   el.style.top = `${y}px`;
   document.body.appendChild(el);
   el.addEventListener("animationend", () => el.remove());
@@ -1708,7 +2389,11 @@ function updateHint() {
   } else if (rock && rock.hardness >= 30) {
     setHint(`Hardness ${rock.hardness}: a tough one, but it wiggles slower. Hold on it and keep swinging.`);
   } else {
-    setHint(`Tap or hold on the rock. Reach ${fmt(run.goal)} before your ${run.rocks} rocks run out.`);
+    setHint(
+      autoMine
+        ? `Auto-mine is swinging, slowly. Tap the rock yourself to build a combo and go faster.`
+        : `Tap or hold on the rock. Reach ${fmt(run.goal)} before your ${run.rocks} rocks run out.`
+    );
   }
 }
 
@@ -1897,17 +2582,18 @@ const MAX_DRIFTERS = reducedMotion ? 2 : 3;
 const DRIFT_EVERY_MS = 7000;
 const GOLDEN_CHANCE = 0.02;
 
-function spawnDrifter() {
-  if (driftEl.childElementCount >= MAX_DRIFTERS) return;
+// fast: part of a cave-in (quick fall, no limit); golden: force a golden one
+function spawnDrifter(fast = false, golden = false) {
+  if (!fast && driftEl.childElementCount >= MAX_DRIFTERS) return;
   const el = document.createElement("button");
   el.type = "button";
   el.className = "drifter";
   el.setAttribute("aria-label", "Falling nugget");
-  if (Math.random() < GOLDEN_CHANCE) el.classList.add("golden");
+  if (golden || Math.random() < GOLDEN_CHANCE) el.classList.add("golden");
   const size = 24 + Math.floor(Math.random() * 4) * 6;
   el.style.left = `${Math.random() * 94}vw`;
   el.style.setProperty("--ds", `${size}px`);
-  el.style.setProperty("--dur", `${12 + Math.random() * 12}s`);
+  el.style.setProperty("--dur", fast ? `${3 + Math.random() * 2}s` : `${12 + Math.random() * 12}s`);
   el.style.setProperty("--sway", `${(Math.random() - 0.5) * 120}px`);
   el.style.setProperty("--spin", `${3 + Math.random() * 6}s`);
   const nug = document.createElement("div");
@@ -1964,8 +2650,11 @@ function resize() {
 resize();
 window.addEventListener("resize", resize);
 
+// Particles are capped so big moments never pile up into lag
+const MAX_PARTICLES = 220;
 function burst(x, y, count, colors = COLORS, power = 1) {
   if (reducedMotion) count = Math.round(count / 4);
+  count = Math.min(count, Math.max(0, MAX_PARTICLES - particles.length));
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = (4 + Math.random() * 9) * power;
@@ -1990,6 +2679,7 @@ function burst(x, y, count, colors = COLORS, power = 1) {
 // Gold sparkles that float up and wobble
 function sparkles(x, y, count) {
   if (reducedMotion) count = Math.round(count / 4);
+  count = Math.min(count, Math.max(0, MAX_PARTICLES - particles.length));
   for (let i = 0; i < count; i++) {
     particles.push({
       x: x + (Math.random() - 0.5) * 60,
@@ -2213,7 +2903,7 @@ const ambience = {
     const dark = darkFor(run ? run.level : 1);
     const t = audioCtx.currentTime;
     const { out, filter, drones, band } = this.nodes;
-    out.gain.setTargetAtTime(muted ? 0.0001 : 0.05 + dark * 0.12, t, 1.5);
+    out.gain.setTargetAtTime(muted || ambienceOff ? 0.0001 : 0.05 + dark * 0.12, t, 1.5);
     filter.frequency.setTargetAtTime(240 - dark * 140, t, 2);
     band.frequency.setTargetAtTime(380 * pitch, t, 2);
     for (const { osc, f } of drones) osc.frequency.setTargetAtTime(f * pitch, t, 2);
@@ -2238,7 +2928,7 @@ function tunnelTune() {
   const dark = darkFor(run ? run.level : 1);
   const beatMs = 60000 / (84 - dark * 34);
   setTimeout(tunnelTune, beatMs);
-  if (muted || document.hidden || !ambience.nodes) return;
+  if (muted || ambienceOff || document.hidden || !ambience.nodes) return;
   const bar = Math.floor(tuneBeat / 8);
   const step = tuneBeat % 8;
   tuneBeat++;
@@ -2262,7 +2952,7 @@ setTimeout(tunnelTune, 2000);
 
 let heartbeat = 0;
 setInterval(() => {
-  if (muted || document.hidden || !ambience.nodes) return;
+  if (muted || ambienceOff || document.hidden || !ambience.nodes) return;
   const dark = darkFor(run ? run.level : 1);
   // Water dripping somewhere in the dark
   if (Math.random() < 0.3) {
@@ -2284,10 +2974,269 @@ setInterval(() => {
   }
 }, 1000);
 
+/* ---------- Secret achievements ---------- */
+
+// Unlocked by doing something, not by a counter
+function unlockAch(id) {
+  if (state.ach[id]) return;
+  const a = ACHIEVEMENTS.find((x) => x.id === id);
+  if (!a) return;
+  state.ach[id] = true;
+  achQueue.push(a);
+  renderAchCount();
+  if (!achShowing) showNextAchievement();
+  persist();
+}
+
+/* ---------- Pixel sprites ---------- */
+
+function drawSprite(canvas, rows, palette, cell) {
+  canvas.width = rows[0].length * cell;
+  canvas.height = rows.length * cell;
+  const g = canvas.getContext("2d");
+  rows.forEach((row, y) =>
+    [...row].forEach((c, x) => {
+      if (!palette[c]) return;
+      g.fillStyle = palette[c];
+      g.fillRect(x * cell, y * cell, cell, cell);
+    })
+  );
+}
+
+const CANARY = ["...YYY..", "..YYKYO.", "..YYYYOO", "YYYYYY..", ".YYYYY..", "..YYYY..", "...O.O.."];
+const CANARY_COLORS = { Y: "#ffd84a", K: "#000", O: "#ff8a1f" };
+const GHOST = [
+  ".....LL...", "...HHHHH..", "..HHHHHHH.", "..WWWWWW..", "..WKWWKW..", "..WWWWWW..", "...WWWW...",
+  "..GGGGGG..", ".GGGGGGGG.", ".GGGGGGGG.", ".GG.GG.GG.", ".GGGGGGGG.", "..GG..GG..", "..G....G..",
+];
+const GHOST_COLORS = { H: "#8a7660", L: "#ffd84a", W: "#dfe8ff", K: "#223", G: "#b8c8ff" };
+
+// A sprite crossing the screen; tapping it calls onTap, letting it escape calls onMiss
+function crossScreen(rows, palette, cell, cls, ms, onTap, onMiss) {
+  const el = document.createElement("canvas");
+  el.className = `crosser ${cls}`;
+  drawSprite(el, rows, palette, cell);
+  el.style.top = `${between(18, 55)}vh`;
+  document.body.appendChild(el);
+  let caught = false;
+  const flight = el.animate([{ transform: "translateX(-15vw)" }, { transform: "translateX(112vw)" }], { duration: ms, easing: "linear", fill: "forwards" });
+  el.addEventListener("pointerdown", (e) => {
+    if (caught) return;
+    caught = true;
+    const { x, y } = centerOf(el);
+    flight.pause();
+    el.animate([{ opacity: 1, transform: getComputedStyle(el).transform }, { opacity: 0, transform: `${getComputedStyle(el).transform} scale(2)` }], { duration: 400, fill: "forwards" });
+    setTimeout(() => el.remove(), 420);
+    onTap(x, y);
+    e.stopPropagation();
+  });
+  flight.finished
+    .then(() => {
+      if (caught) return;
+      el.remove();
+      onMiss && onMiss();
+    })
+    .catch(() => {});
+}
+
+/* ---------- Gold fever ---------- */
+
+// A 50 combo sets it off: ten seconds of double damage and a coin on every hit
+let fever = false;
+function startFever() {
+  if (fever) return;
+  fever = true;
+  document.documentElement.classList.add("fever");
+  showToast("🔥 GOLD FEVER 🔥\n2× DAMAGE · GOLD EVERY HIT", 9, true);
+  victory(5);
+  unlockAch("secret_fever");
+  setTimeout(() => {
+    fever = false;
+    document.documentElement.classList.remove("fever");
+  }, 10000);
+}
+
+/* ---------- Random mine events ---------- */
+
+let rocksUntilEvent = range(12, 26);
+function tickEvents() {
+  if (--rocksUntilEvent > 0) return;
+  rocksUntilEvent = range(12, 26);
+  pick([caveIn, canary, goldVein, ghostMiner])();
+}
+
+function caveIn() {
+  showToast("CAVE-IN!\nGRAB THE NUGGETS", 6, true);
+  boom(0);
+  shake(floorEl, 8, 500);
+  pulseDark();
+  setMessage("> the ceiling gives way. it's raining nuggets", "eerie");
+  for (let i = 0; i < 12; i++) setTimeout(() => spawnDrifter(true, i === 5), i * 90);
+}
+
+function canary() {
+  SOUND.chirp();
+  setMessage("> a canary! still alive! catch it before it's gone", true);
+  crossScreen(CANARY, CANARY_COLORS, 6, "canary", 6500, (x, y) => {
+    SOUND.chirp();
+    sparkles(x, y, 20);
+    unlockAch("secret_canary");
+    if (run) {
+      run.rocks += 2;
+      renderRun();
+      showToast("THE CANARY LIVES!\n+2 ROCKS", 4, true);
+    } else showToast("THE CANARY LIVES!", 4);
+  }, () => setMessage("> the canary flew off. that's... probably fine", "eerie"));
+}
+
+function goldVein() {
+  if (!run) return;
+  run.vein = 3;
+  showToast("✦ GOLD VEIN ✦\nNEXT 3 ROCKS: DOUBLE FINDS", 7, true);
+  SOUND.trophy();
+  setMessage("> you hit a vein. the walls sparkle", true);
+}
+
+const GHOST_LINES = [
+  "> a ghost miner drifts by. he's still on shift",
+  "> a ghost miner waves. he forgot his lunch in 1893",
+  "> a ghost miner points at the rock. helpful",
+  "> a ghost miner checks his pocket watch. it stopped long ago",
+];
+function ghostMiner() {
+  setMessage(pick(GHOST_LINES), "eerie");
+  noise(2, { vol: 0.05, hp: 1500, attack: 1, wet: 0.8 });
+  crossScreen(GHOST, GHOST_COLORS, 5, "ghost", 11000, (x, y) => {
+    floatText(x, y - 20, "boo.", "gold");
+    unlockAch("secret_ghost");
+    // He leaves something behind
+    const item = rollLoot({ luck: 30, rarity: 9 });
+    addItem(item.id);
+    if (run) run.finds[item.id] = (run.finds[item.id] || 0) + 1;
+    dropToken(item, x, y);
+    floatText(x, y - 50, `${RARITY_SYMBOLS[item.rarity]} ${item.name}`, `loot r${item.rarity}`);
+    persist();
+  });
+}
+
+/* ---------- Talking rocks ---------- */
+
+const ROCK_LINES = [
+  "ow!", "not the face!", "I have a family!", "rude.", "is this about the gold?", "I was here first",
+  "ok that one hurt", "stop. please.", "I'm just a rock", "you'll regret this", "my mother was a mountain",
+  "can we talk about this?", "harder? HARDER?", "*rock noises*", "I felt that in my strata",
+];
+const PET_LINES = [
+  "hi!", "are we friends?", "why", "I trusted you", "my name is Pebbles", "this is fine", "ow ow ow",
+  "I was going to be a mountain someday", "we could just hang out", "tell my family I love them",
+];
+let lastSpeech = 0;
+function rockSays(text) {
+  const now = performance.now();
+  if (now - lastSpeech < 1500) return;
+  lastSpeech = now;
+  const { x, y } = rockCenter();
+  const el = fxEl("speech", x, y - 70, 0, 1700);
+  el.textContent = text;
+  sfx(between(500, 700), 0.08, { type: "square", vol: 0.02 });
+  sfx(between(700, 900), 0.08, { type: "square", vol: 0.02, delay: 0.09 });
+}
+
+/* ---------- Poking the eyes ---------- */
+
+const POKE_LINES = ["hey!", "rude.", "ow, my eye", "we're watching YOU", "stop that", "...", "blink. blink.", "personal space?"];
+let pokes = 0;
+eyesEl.addEventListener("pointerdown", (e) => {
+  const pairEl = e.target.closest(".eye-pair");
+  if (!pairEl) return;
+  pairEl.classList.add("poked");
+  setTimeout(() => pairEl.classList.remove("poked"), 1400);
+  floatText(e.clientX, e.clientY - 20, pick(POKE_LINES), "miss");
+  sfx(220, 0.12, { type: "sine", vol: 0.06, to: 120 });
+  if (++pokes % 10 === 0) {
+    eyesEl.classList.add("all-poked");
+    setTimeout(() => eyesEl.classList.remove("all-poked"), 3000);
+    showToast("FINE.\nWE'LL STOP LOOKING.", 5, true);
+    unlockAch("secret_rude");
+  }
+});
+
+/* ---------- The sign falls down ---------- */
+
+let signTaps = [];
+let signDown = false;
+document.querySelector("header h1").addEventListener("click", async () => {
+  const now = performance.now();
+  signTaps = signTaps.filter((t) => now - t < 2000).concat(now);
+  metal(mineNote(signTaps.length + 4, 1), 0.2, { vol: 0.03 });
+  if (signTaps.length < 5 || signDown) return;
+  signTaps = [];
+  signDown = true;
+  const sign = document.querySelector("header .sign");
+  chain(8);
+  await sign.animate(
+    [{ transform: "rotate(-1.2deg)" }, { transform: "rotate(14deg)", offset: 0.3 }, { transform: "translateY(120vh) rotate(40deg)" }],
+    { duration: 1100, easing: "ease-in", fill: "forwards" }
+  ).finished.catch(() => {});
+  boom(0);
+  shake(floorEl, 10, 400);
+  setMessage("> the sign fell. health and safety has been notified", true);
+  unlockAch("secret_sign");
+  await wait(1800);
+  chain(10);
+  await sign.animate([{ transform: "translateY(-60vh) rotate(0deg)" }, { transform: "translateY(8px) rotate(-3deg)", offset: 0.8 }, { transform: "rotate(-1.2deg)" }], {
+    duration: 900,
+    easing: "ease-out",
+  }).finished.catch(() => {});
+  sign.getAnimations().forEach((a) => a.cancel());
+  signDown = false;
+});
+
+/* ---------- Easter eggs on the keyboard ---------- */
+
+// The old code turns your pickaxe into a rainbow; a few typed words wake things up
+const KONAMI = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
+let rainbowPick = load("minele-rainbow") === 1;
+let keyTrail = [];
+let typed = "";
+const SECRET_WORDS = {
+  canary: () => canary(),
+  dino: () => dinoStomp(),
+  shroom: () => startTrip(),
+  boo: () => {
+    eyesEl.classList.add("all-poked", "flee");
+    setTimeout(() => eyesEl.classList.remove("all-poked", "flee"), 2000);
+    setMessage("> boo yourself", "eerie");
+    SOUND.blub();
+  },
+};
+document.addEventListener("keydown", (e) => {
+  if (document.activeElement && document.activeElement.tagName === "INPUT") return;
+  keyTrail = keyTrail.concat(e.key.length === 1 ? e.key.toLowerCase() : e.key).slice(-KONAMI.length);
+  if (KONAMI.every((k, i) => keyTrail[i] === k)) {
+    keyTrail = [];
+    rainbowPick = !rainbowPick;
+    save("minele-rainbow", rainbowPick ? 1 : 0);
+    showToast(rainbowPick ? "↑↑↓↓←→←→BA\nRAINBOW PICKAXE" : "RAINBOW PICKAXE\nPUT AWAY", 9, true);
+    victory(4);
+    unlockAch("secret_konami");
+    return;
+  }
+  if (e.key.length !== 1) return;
+  typed = (typed + e.key.toLowerCase()).slice(-12);
+  for (const [word, action] of Object.entries(SECRET_WORDS)) {
+    if (typed.endsWith(word)) {
+      typed = "";
+      action();
+    }
+  }
+});
+
 /* ---------- Start ---------- */
 
 renderGold();
 renderAchCount();
+applyAutoMine();
 if (run) {
   resumeRun();
 } else {

@@ -24,6 +24,8 @@
   --r2: #408cff;
   --r3: #a64df2;
   --r4: #ffa61a;
+  --r5: #e8dcb8;
+  --r6: #ff4fd8;
   --pixel: "VT323", ui-monospace, monospace;
   --pixel-bold: "Press Start 2P", "VT323", monospace;
   /* Set from script.js: how far down you are, and how dark it is (0 = surface, 1 = abyss) */
@@ -123,7 +125,6 @@ body {
     rgba(0, 0, 0, calc(.35 + var(--dark) * .55)) calc(110vmax - var(--dark) * 70vmax)
   );
   transition: background 2s;
-  animation: lamp-flicker 5s steps(1) infinite;
 }
 @keyframes lamp-flicker {
   0%, 100% { opacity: 1; }
@@ -167,7 +168,6 @@ body {
   height: var(--es);
   background: radial-gradient(ellipse at center, #fff6c0 0 10%, var(--ec) 45%, transparent 72%);
   border-radius: 50%;
-  filter: drop-shadow(0 0 calc(var(--es) * .6) var(--ec));
   animation: blink var(--blink, 6s) var(--bd, 0s) steps(1) infinite;
 }
 /* A slit pupil that turns toward you */
@@ -399,6 +399,124 @@ header h1 { cursor: default; user-select: none; -webkit-tap-highlight-color: tra
   50% { filter: drop-shadow(0 0 22px var(--r4)) drop-shadow(0 10px 0 rgba(0, 0, 0, .6)) brightness(1.25); }
 }
 
+/* A fossil breathes dust and pale light */
+.rock.fossil { animation: fossil-glow 2s ease-in-out infinite; }
+@keyframes fossil-glow {
+  50% { filter: drop-shadow(0 0 18px var(--r5)) drop-shadow(0 10px 0 rgba(0, 0, 0, .6)) brightness(1.15); }
+}
+
+/* The dinosaur stomp: a giant shadow walking past in the dark */
+.stomp-dino {
+  position: fixed;
+  left: 0;
+  bottom: -2vh;
+  z-index: 18;
+  height: 62vh;
+  width: auto;
+  image-rendering: pixelated;
+  pointer-events: none;
+  filter: drop-shadow(0 0 30px rgba(255, 59, 47, .25));
+}
+/* Every eye hides while it passes */
+.eyes.flee, .pit-eyes.flee { opacity: 0; transition: opacity .3s; }
+.eyes, .pit-eyes { transition: opacity 1.2s; }
+
+/* A mushroom rock pulses through every color */
+.rock.shroom { animation: shroom-glow 2.4s linear infinite; }
+@keyframes shroom-glow {
+  from { filter: drop-shadow(0 0 16px var(--r6)) hue-rotate(0deg); }
+  to { filter: drop-shadow(0 0 16px var(--r6)) hue-rotate(360deg); }
+}
+
+/* The mushroom trip: the colors melt and the mine sways */
+html.trip { animation: trip-hue 2.2s linear infinite; }
+@keyframes trip-hue {
+  from { filter: hue-rotate(0deg) saturate(2.2); }
+  to { filter: hue-rotate(360deg) saturate(2.2); }
+}
+html.trip .floor { animation: trip-sway 2.6s ease-in-out infinite; }
+@keyframes trip-sway {
+  25% { transform: skewX(4deg) scale(1.02); }
+  75% { transform: skewX(-4deg) scale(.98); }
+}
+html.trip .darkness { opacity: .35; }
+@media (prefers-reduced-motion: reduce) {
+  html.trip { animation: none; filter: hue-rotate(120deg) saturate(1.8); }
+  html.trip .floor { animation: none; }
+}
+
+/* A find tumbling out of the rock */
+.drop-token {
+  position: fixed;
+  z-index: 19;
+  font-family: var(--pixel-bold);
+  line-height: 1;
+  color: var(--rc);
+  text-shadow: 0 0 10px var(--rc), 2px 2px 0 #000;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* Gold fever: the edges of the screen burn gold */
+html.fever body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none;
+  box-shadow: inset 0 0 90px 24px rgba(255, 170, 40, .55);
+  animation: fever-pulse .6s ease-in-out infinite alternate;
+}
+@keyframes fever-pulse { to { box-shadow: inset 0 0 130px 40px rgba(255, 120, 20, .7); } }
+
+/* Things that cross the screen: the canary, the ghost miner */
+.crosser {
+  position: fixed;
+  left: 0;
+  z-index: 22;
+  height: 54px;
+  width: auto;
+  image-rendering: pixelated;
+  cursor: pointer;
+  filter: drop-shadow(0 0 10px rgba(255, 216, 74, .6));
+}
+.crosser.ghost { height: 90px; opacity: .55; filter: drop-shadow(0 0 16px #b8c8ff); }
+
+/* A rock's speech bubble */
+.speech {
+  position: fixed;
+  z-index: 20;
+  padding: 4px 10px 2px;
+  transform: translate(-50%, -100%);
+  font-size: 1.05rem;
+  white-space: nowrap;
+  color: #000;
+  background: #f2e8d0;
+  border: 2px solid #000;
+  pointer-events: none;
+  animation: speech 1.7s steps(10) forwards;
+}
+.speech::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  border: 6px solid transparent;
+  border-top-color: #000;
+  transform: translateX(-50%);
+}
+@keyframes speech {
+  0% { transform: translate(-50%, -80%) scale(.4); opacity: 0; }
+  12%, 80% { transform: translate(-50%, -100%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -140%); opacity: 0; }
+}
+
+.float.perfect { color: #fff; font-size: 1.1rem; text-shadow: 0 0 12px var(--lamp), 3px 3px 0 var(--blood-dark); }
+
+/* Eyes can be poked */
+.eye-pair { pointer-events: auto; cursor: pointer; }
+.eye-pair.poked .eye, .eyes.all-poked .eye { animation: none; transform: scaleY(.08); }
+
 /* Combo counter in the cave's corner, heating up through the rarity colors */
 .combo {
   position: absolute;
@@ -594,6 +712,7 @@ header h1 { cursor: default; user-select: none; -webkit-tap-highlight-color: tra
   cursor: pointer;
 }
 .insta-btn:hover { border-color: var(--rust); color: var(--lamp); }
+.insta-btn.on { color: var(--lamp); border-color: var(--lamp); text-shadow: 0 0 8px var(--lamp); box-shadow: 0 0 0 2px #000, 0 0 14px rgba(255, 181, 74, .35); }
 #shop-ready { color: var(--moss); }
 .footer {
   margin: 22px 0 0;
@@ -754,6 +873,11 @@ html.flashy .flashy-btn { color: var(--lamp); text-shadow: 0 0 8px var(--lamp); 
 .r2 { --rc: var(--r2); color: var(--r2); }
 .r3 { --rc: var(--r3); color: var(--r3); }
 .r4 { --rc: var(--r4); color: var(--r4); }
+.r5 { --rc: var(--r5); color: var(--r5); }
+.r6 { --rc: var(--r6); color: var(--r6); }
+/* Mushrooms never hold still: their color keeps drifting through the rainbow */
+.chip.r6, .tab.r6, .item.r6 .gem, .detail.r6 h4, .help-steps b.r6 { animation: psyche 3s linear infinite; }
+@keyframes psyche { from { filter: hue-rotate(0deg); } to { filter: hue-rotate(360deg); } }
 
 /* ---------- Corner widgets ---------- */
 .gold-badge {
@@ -813,6 +937,8 @@ html.flashy .flashy-btn { color: var(--lamp); text-shadow: 0 0 8px var(--lamp); 
 #lb-btn { font-family: var(--pixel); font-size: 1.4rem; }
 .mute { color: var(--gold); font-size: 1.6rem; }
 .mute.off { color: #5a4a3a; text-decoration: line-through; }
+.ambience-btn { font-family: var(--pixel); font-size: 1.6rem; }
+.ambience-btn.off { color: #5a4a3a; text-decoration: line-through; }
 
 .jackpot.value, .toast.jackpot, .go-score.jackpot { animation: rainbow 4s linear infinite; }
 @keyframes rainbow {
@@ -931,7 +1057,7 @@ html.flashy .flashy-btn { color: var(--lamp); text-shadow: 0 0 8px var(--lamp); 
 .float.c4 { color: var(--r3); font-size: 1.5rem; }
 .float.c5, .float.c6, .float.c7, .float.c8 { color: var(--r4); font-size: 1.8rem; text-shadow: 3px 3px 0 var(--blood-dark), 0 0 14px var(--r4); }
 .float.loot { font-size: .8rem; animation: float-down 2.6s steps(16) forwards; text-shadow: 2px 2px 0 #000, 0 0 10px currentColor; }
-.float.loot.r4 { font-size: 1.1rem; }
+.float.loot.r4, .float.loot.r5, .float.loot.r6 { font-size: 1.1rem; }
 @keyframes float-up {
   to { transform: translate(-50%, calc(-50% - 70px)); opacity: 0; }
 }
@@ -1046,7 +1172,7 @@ html.flashy .flashy-btn { color: var(--lamp); text-shadow: 0 0 8px var(--lamp); 
 .help-steps { margin: 12px 0 0; padding-left: 22px; font-size: 1.15rem; line-height: 1.3; }
 .help-steps li { margin-bottom: 6px; }
 .help-steps b { color: var(--gold); font-weight: normal; }
-.help-steps b.r0, .help-steps b.r1, .help-steps b.r2, .help-steps b.r3, .help-steps b.r4 { color: var(--rc); }
+.help-steps b.r0, .help-steps b.r1, .help-steps b.r2, .help-steps b.r3, .help-steps b.r4, .help-steps b.r5, .help-steps b.r6 { color: var(--rc); }
 
 /* Bag: tabs per rarity, a grid of finds, details of the selected one */
 .tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-bottom: 10px; }
