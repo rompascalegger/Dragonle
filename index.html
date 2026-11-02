@@ -9,12 +9,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=1.0.0">
+  <link rel="stylesheet" href="style.css?v=1.2.0">
 </head>
 <body>
   <div class="scanlines" aria-hidden="true"></div>
-  <div class="stars" aria-hidden="true"></div>
+  <div class="dust" aria-hidden="true"></div>
   <div id="shaftwall" class="shaftwall" aria-hidden="true"></div>
+  <div id="eyes" class="eyes" aria-hidden="true"></div>
+  <div id="darkness" class="darkness" aria-hidden="true"></div>
 
   <button id="gold" class="panel gold-badge" type="button" title="Gold: sell finds in the bag, spend it in the shop">
     <span class="coin"><span>G</span></span>
@@ -36,14 +38,15 @@
       <h1>MINELE</h1>
       <p class="subtitle">THE BOTTOMLESS MINE</p>
     </div>
-    <button id="enter" class="roll-btn" type="button">&#9660; ENTER &#9660;</button>
+    <div class="eye-pair splash-eyes" aria-hidden="true"><span class="eye"><span class="pupil"></span></span><span class="eye"><span class="pupil"></span></span></div>
+    <button id="enter" class="roll-btn" type="button">&#9660; DESCEND &#9660;</button>
     <button id="splash-help" class="panel splash-help" type="button">? HOW TO PLAY</button>
-    <p class="splash-hint">tap to enter &middot; sound on &middot; your finds are kept forever</p>
+    <p class="splash-hint">tap to descend &middot; sound on &middot; don't count the eyes</p>
   </div>
 
   <div id="gameover" class="gameover" aria-live="polite">
     <div id="go-card" class="panel go-card">
-      <p class="go-head">OUT OF ROCKS</p>
+      <p class="go-head">YOUR LAMP GOES OUT</p>
       <span id="go-score" class="go-score">0</span>
       <span id="go-tier" class="go-tier">PEBBLE</span>
       <span id="go-title" class="go-player-title"></span>
@@ -75,7 +78,7 @@
         <button id="go-shop" class="panel insta-btn" type="button">&#128722; SHOP</button>
         <button id="go-bag" class="panel insta-btn" type="button">&#127890; BAG</button>
       </div>
-      <button id="new-game" class="roll-btn" type="button">&#9660; NEW RUN &#9660;</button>
+      <button id="new-game" class="roll-btn" type="button">&#9660; DESCEND AGAIN &#9660;</button>
     </div>
   </div>
 
@@ -124,11 +127,14 @@
       <h2>HOW TO PLAY</h2>
       <ol class="help-steps">
         <li><b>Smash the rock.</b> Tap it to swing your pickaxe, or hold to keep swinging. It wiggles: a swing that misses does nothing.</li>
-        <li><b>Damage</b> = (strength &times; 10 + pickaxe &times; 100) &divide; hardness, give or take 10%. Some swings are <b>critical</b>: the brighter the number, the harder the hit. Some are weak, too.</li>
+        <li><b>Damage</b> = (strength &times; 10 + pickaxe &times; 100) &divide; hardness, give or take 10%. Some swings are <b>critical</b>: the brighter the number, the harder the hit.</li>
+        <li><b>Combo:</b> every hit in a row adds 4% damage (up to 3&times; at 50). A miss or a pause of 1.5 s breaks it. Every 10 is a milestone.</li>
+        <li><b>Geodes</b> &#10040; glitter in the dark (about 1 rock in 25): double health, but triple score, three lucky finds and a pile of gold.</li>
         <li><b>Every rock is different.</b> Most are soft, a few are rock-hard. Hard rocks wiggle slower, so they're easier to hit.</li>
-        <li><b>Each broken rock</b> pays score and drops one find: a <b class="r0">stone</b>, <b class="r1">mineral</b>, <b class="r2">gem</b>, <b class="r3">precious gem</b> or <b class="r4">element</b>. A lucky rock (high rarity) drops better finds.</li>
-        <li><b>Reach the goal</b> before you run out of rocks and you go one level deeper, with more rocks: 6 + 3 &times; level. Every level's goal is 15% higher than the last.</li>
-        <li><b>Out of rocks</b> below the goal = the run is over. Your score is everything you mined this run.</li>
+        <li><b>Each broken rock</b> pays score, a few gold coins and one find: <b class="r0">&#9671; stone</b>, <b class="r1">&#9670; mineral</b>, <b class="r2">&#10022; gem</b>, <b class="r3">&#10070; precious gem</b> or <b class="r4">&#10040; element</b>. Stones and minerals come in small stacks. A lucky rock glows and drops better finds.</li>
+        <li><b>Reach the goal</b> before you run out of rocks and the cage takes you one level deeper (50 m down), with more rocks: 6 + 3 &times; level. Every level's goal is 15% higher than the last.</li>
+        <li><b>Deeper is darker.</b> Your lamp reaches less far, the mine sounds lower and stranger, and more of <i>them</i> open their eyes to watch you dig.</li>
+        <li><b>Out of rocks</b> below the goal = your lamp goes out and the run is over. Your score is everything you mined this run.</li>
         <li><b>Finds stay forever.</b> Sell them in the &#127890; BAG for gold, or keep them: the &#128722; SHOP wants gold <i>and</i> specific finds for every upgrade.</li>
         <li><b>Upgrades:</b> strength, agility (steadier hits), luck (better finds and score), pickaxe, insight (better finds, but rocks get tougher and wilder), dimension (more score, tougher rocks), slow motion (calmer rock) and player power (more score).</li>
         <li><b>Falling nuggets</b> drift by now and then. Tap them for a few points; a rare golden one is worth gold.</li>
@@ -163,36 +169,39 @@
         <span>RARITY <b id="rarity">-</b></span>
         <span id="rock-depth">LV 1</span>
       </div>
-      <div class="hp"><div id="hp-fill" class="hp-fill"></div><span id="hp-text" class="hp-text">tap NEW RUN</span></div>
+      <div class="hp"><div id="hp-fill" class="hp-fill"></div><span id="hp-text" class="hp-text">tap DESCEND</span></div>
       <div id="pit" class="pit" aria-label="The rock: tap or hold to mine">
+        <div id="pit-eyes" class="pit-eyes" aria-hidden="true"></div>
+        <div id="combo" class="combo" aria-live="polite"></div>
         <canvas id="rock" class="rock"></canvas>
       </div>
     </div>
 
     <p id="message" class="message">&gt; grab your pickaxe</p>
-    <p id="hint" class="hint">Tap NEW RUN to play. New here? The ? button explains everything.</p>
+    <p id="hint" class="hint">Tap DESCEND to play. New here? The ? button explains everything.</p>
 
-    <button id="roll" class="roll-btn" type="button">&#9660; NEW RUN &#9660;</button>
+    <button id="roll" class="roll-btn" type="button">&#9660; DESCEND &#9660;</button>
     <div class="btn-row">
       <button id="bag-btn" class="panel insta-btn" type="button">&#127890; BAG</button>
       <button id="shop-btn" class="panel insta-btn" type="button">&#128722; SHOP <span id="shop-ready"></span></button>
       <button id="ach-btn" class="panel insta-btn" type="button">&#127941; <span id="ach-short">0</span></button>
     </div>
 
-    <p class="footer">DEEPEST LEVEL <span id="top-level">1</span> &middot; tap the falling nuggets &middot; <span id="version" class="version"></span></p>
+    <p class="footer">DEEPEST <span id="top-level">-50 M</span> &middot; tap the falling nuggets &middot; <span id="version" class="version"></span></p>
     <p id="joke" class="joke"></p>
   </main>
   </div>
 
   <aside class="depth" aria-hidden="true">
     <div id="shaft" class="shaft"></div>
-    <div class="marker">&#9660; LV <span id="depth-label">1</span></div>
+    <div class="cable"></div>
+    <div class="marker">&#9660; <span id="depth-label">-50 M</span></div>
   </aside>
 
   <div id="toast" class="toast" aria-hidden="true">CRIT!</div>
   <canvas id="fx" class="fx"></canvas>
 
-  <script src="data.js?v=1.0.0"></script>
-  <script src="script.js?v=1.0.0"></script>
+  <script src="data.js?v=1.2.0"></script>
+  <script src="script.js?v=1.2.0"></script>
 </body>
 </html>

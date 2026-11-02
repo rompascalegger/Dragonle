@@ -1,18 +1,23 @@
 :root {
-  --night1: #1c0b33;
-  --night2: #0b0518;
-  --wall: #2a1240;
-  --wall-dark: #160828;
-  --rock: #3a2a4a;
-  --rock-dark: #1d1328;
-  --gold: #ffcf4a;
-  --gold-dark: #9a6a12;
-  --neon-pink: #ff3d9a;
-  --neon-cyan: #44f0ff;
-  --red: #d61f35;
-  --red-dark: #7a0d1c;
-  --text: #fff2dc;
-  --panel: rgba(20, 8, 36, .9);
+  --black: #050403;
+  --earth1: #14100c;
+  --earth2: #070504;
+  --rock: #1c1612;
+  --rock-dark: #0d0a08;
+  --timber: #4a3018;
+  --timber-dark: #24160a;
+  --iron: #3a2e24;
+  --rust: #7a4a24;
+  --gold: #e8a840;
+  --gold-dark: #6a4410;
+  --lamp: #ffb54a;
+  --ember: #c2401c;
+  --blood: #8a1410;
+  --blood-dark: #3a0806;
+  --moss: #8ac25a;
+  --text: #e8d6b8;
+  --dim: #8a7660;
+  --panel: rgba(12, 9, 7, .9);
   /* The five rarities, same colors as RogueMiner */
   --r0: #c7c7c7;
   --r1: #40d959;
@@ -21,13 +26,16 @@
   --r4: #ffa61a;
   --pixel: "VT323", ui-monospace, monospace;
   --pixel-bold: "Press Start 2P", "VT323", monospace;
+  /* Set from script.js: how far down you are, and how dark it is (0 = surface, 1 = abyss) */
   --depth: 0px;
+  --dark: 0;
+  --lx: 50vw;
+  --ly: 45vh;
 }
 
 * { box-sizing: border-box; }
 
-/* Background lives on html so the fixed shaft wall (z-index -1) shows above it */
-html { background: radial-gradient(ellipse at 50% 0%, var(--night1), var(--night2) 70%) fixed var(--night2); }
+html { background: radial-gradient(ellipse at 50% 0%, var(--earth1), var(--earth2) 70%) fixed var(--black); }
 
 body {
   margin: 0;
@@ -46,109 +54,191 @@ body {
   inset: 0;
   pointer-events: none;
   z-index: 30;
-  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, .14) 0 1px, transparent 1px 3px);
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, .18) 0 1px, transparent 1px 3px);
 }
 
-/* ---------- Night sky & the mine shaft ---------- */
-.stars {
+/* ---------- The shaft: rock, timber, dust ---------- */
+
+/* Dust drifting down through the lamplight */
+.dust {
   position: fixed;
-  inset: 0;
-  z-index: -2;
+  inset: -100px 0 0;
+  z-index: -1;
+  pointer-events: none;
   background:
-    radial-gradient(2px 2px at 10% 20%, #fff, transparent),
-    radial-gradient(2px 2px at 80% 12%, #fff, transparent),
-    radial-gradient(2px 2px at 30% 70%, #ffd, transparent),
-    radial-gradient(2px 2px at 65% 45%, #fff, transparent),
-    radial-gradient(2px 2px at 90% 80%, #cff, transparent),
-    radial-gradient(2px 2px at 15% 90%, #fff, transparent),
-    radial-gradient(2px 2px at 50% 30%, #fdf, transparent);
-  animation: twinkle 3s steps(2) infinite;
+    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255, 210, 150, .5), transparent),
+    radial-gradient(1px 1px at 33% 64%, rgba(255, 210, 150, .4), transparent),
+    radial-gradient(1.5px 1.5px at 58% 36%, rgba(255, 210, 150, .45), transparent),
+    radial-gradient(1px 1px at 77% 82%, rgba(255, 210, 150, .35), transparent),
+    radial-gradient(1.5px 1.5px at 91% 28%, rgba(255, 210, 150, .4), transparent);
+  background-size: 100% 100px;
+  animation: dustfall 14s linear infinite;
+  opacity: calc(1 - var(--dark) * .6);
 }
-@keyframes twinkle { 50% { opacity: .5; } }
+@keyframes dustfall { to { transform: translateY(100px); } }
 
-/* An endless rock wall with ore veins and timber supports; --depth scrolls it up as you dig down */
+/* An endless rock wall with ore glints and timber supports; --depth scrolls it up as you go down */
 .shaftwall {
   position: fixed;
   top: 0;
   bottom: 0;
   left: 50%;
-  width: min(720px, 94vw);
+  width: min(760px, 96vw);
   transform: translateX(-50%);
-  z-index: -1;
+  z-index: -2;
   background:
-    /* gold and gem specks */
-    radial-gradient(3px 3px at 18% 22%, var(--gold) 60%, transparent) 0 calc(var(--depth) * -1) / 140px 160px,
-    radial-gradient(3px 3px at 72% 64%, var(--neon-cyan) 60%, transparent) 0 calc(var(--depth) * -1) / 180px 200px,
-    radial-gradient(3px 3px at 44% 82%, var(--neon-pink) 60%, transparent) 0 calc(var(--depth) * -1) / 220px 260px,
-    /* timber beams */
-    repeating-linear-gradient(to bottom, #5a3a1c 0 10px, #3a2410 10px 14px, transparent 14px 120px) 0 calc(var(--depth) * -1) / 100% 120px,
+    radial-gradient(2px 2px at 18% 22%, rgba(232, 168, 64, .7) 60%, transparent) 0 calc(var(--depth) * -1) / 140px 170px,
+    radial-gradient(2px 2px at 72% 64%, rgba(138, 194, 90, .5) 60%, transparent) 0 calc(var(--depth) * -1) / 190px 230px,
+    radial-gradient(2px 2px at 44% 82%, rgba(166, 77, 242, .45) 60%, transparent) 0 calc(var(--depth) * -1) / 260px 300px,
+    /* timber crossbeams */
+    repeating-linear-gradient(to bottom, var(--timber) 0 12px, var(--timber-dark) 12px 16px, transparent 16px 160px) 0 calc(var(--depth) * -1) / 100% 160px,
     /* rock strata */
-    repeating-linear-gradient(to bottom, var(--rock) 0 18px, var(--wall) 18px 40px, var(--rock-dark) 40px 46px, var(--wall) 46px 60px) 0 calc(var(--depth) * -1) / 100% 60px,
-    linear-gradient(90deg, var(--wall-dark), var(--wall) 12%, var(--wall) 88%, var(--wall-dark));
-  box-shadow: 0 0 80px rgba(255, 61, 154, .25);
-  opacity: .55;
-  transition: background-position 1s steps(10);
+    repeating-linear-gradient(to bottom, var(--rock) 0 22px, #17120e 22px 44px, var(--rock-dark) 44px 50px, #17120e 50px 64px) 0 calc(var(--depth) * -1) / 100% 64px,
+    linear-gradient(90deg, var(--black), var(--rock) 10%, var(--rock) 90%, var(--black));
+  opacity: calc(.7 - var(--dark) * .45);
+  transition: background-position 1.2s steps(12);
 }
+/* Timber posts up the sides */
 .shaftwall::before,
 .shaftwall::after {
-  /* neon trim running down the sides */
   content: "";
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 4px;
+  width: 18px;
+  background: linear-gradient(90deg, var(--timber-dark), var(--timber) 40%, var(--timber-dark));
 }
-.shaftwall::before { left: 0; background: var(--level-color, var(--neon-pink)); box-shadow: 0 0 12px var(--level-color, var(--neon-pink)), 0 0 24px var(--level-color, var(--neon-pink)); transition: background .6s; }
-.shaftwall::after { right: 0; background: var(--neon-cyan); box-shadow: 0 0 12px var(--neon-cyan), 0 0 24px var(--neon-cyan); }
+.shaftwall::before { left: 0; }
+.shaftwall::after { right: 0; }
 
-/* ---------- Neon sign ---------- */
+/* The dark closes in around the lantern as you go deeper. Lives under the HUD and modals */
+.darkness {
+  position: fixed;
+  inset: 0;
+  z-index: 14;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at var(--lx) var(--ly),
+    transparent calc(78vmax - var(--dark) * 58vmax),
+    rgba(0, 0, 0, calc(.35 + var(--dark) * .55)) calc(110vmax - var(--dark) * 70vmax)
+  );
+  transition: background 2s;
+  animation: lamp-flicker 5s steps(1) infinite;
+}
+@keyframes lamp-flicker {
+  0%, 100% { opacity: 1; }
+  47% { opacity: .92; }
+  48% { opacity: 1; }
+  83% { opacity: .95; }
+}
+/* A sudden lurch: the dark swallows everything for a breath */
+.darkness.pulse { animation: dark-pulse .9s steps(6); }
+@keyframes dark-pulse {
+  30% { opacity: 1; background-color: rgba(0, 0, 0, .55); }
+}
+
+/* ---------- Eyes in the dark ---------- */
+.eyes {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.pit-eyes { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.eye-pair {
+  --es: 10px;
+  --ec: #ffcf4a;
+  --px: 0px;
+  --py: 0px;
+  position: absolute;
+  display: flex;
+  gap: calc(var(--es) * .9);
+  opacity: 0;
+  transform: rotate(var(--tilt, 0deg));
+  animation: eyes-open 4s ease-in forwards;
+}
+@keyframes eyes-open { to { opacity: var(--eo, .85); } }
+.eye-pair.leaving { animation: eyes-close .8s steps(4) forwards; }
+@keyframes eyes-close { from { opacity: var(--eo, .85); } to { opacity: 0; } }
+.eye {
+  position: relative;
+  width: calc(var(--es) * 1.6);
+  height: var(--es);
+  background: radial-gradient(ellipse at center, #fff6c0 0 10%, var(--ec) 45%, transparent 72%);
+  border-radius: 50%;
+  filter: drop-shadow(0 0 calc(var(--es) * .6) var(--ec));
+  animation: blink var(--blink, 6s) var(--bd, 0s) steps(1) infinite;
+}
+/* A slit pupil that turns toward you */
+.pupil {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(2px, calc(var(--es) * .22));
+  height: calc(var(--es) * .8);
+  background: #000;
+  border-radius: 50%;
+  transform: translate(calc(-50% + var(--px)), calc(-50% + var(--py)));
+  transition: transform .25s;
+}
+@keyframes blink {
+  0%, 93%, 100% { transform: scaleY(1); }
+  94%, 96% { transform: scaleY(.08); }
+}
+/* Something shiny dropped: every eye goes wide */
+.eyes.widen .eye, .pit-eyes.widen .eye { animation: none; transform: scale(1.35); transition: transform .2s; }
+.eyes.widen .pupil, .pit-eyes.widen .pupil { width: max(3px, calc(var(--es) * .45)); }
+.splash-eyes { position: relative; margin-top: 10px; --es: 12px; --ec: #ffcf4a; animation: eyes-open 3s 1.5s ease-in forwards; }
+
+/* ---------- The mine sign ---------- */
 header {
   text-align: center;
-  padding: 28px 16px 8px;
+  padding: 34px 16px 8px;
 }
 .sign {
   position: relative;
   display: inline-block;
-  padding: 22px 30px 18px;
-  background: rgba(12, 4, 24, .85);
-  border: 4px solid var(--gold);
-  box-shadow: 0 0 0 4px var(--night2), 0 0 30px rgba(255, 207, 74, .35);
+  padding: 18px 28px 16px;
+  background:
+    repeating-linear-gradient(to bottom, rgba(0, 0, 0, .18) 0 2px, transparent 2px 9px),
+    linear-gradient(#3e2814, #2a1a0c);
+  border: 4px solid var(--timber-dark);
+  box-shadow: 0 0 0 3px #000, 0 10px 30px rgba(0, 0, 0, .8), inset 0 0 18px rgba(0, 0, 0, .6);
+  transform: rotate(-1.2deg);
 }
-/* Chasing marquee bulbs around the sign */
-.sign::before {
+/* Hung from two chains */
+.sign::before,
+.sign::after {
   content: "";
   position: absolute;
-  inset: -12px;
-  border: 6px dotted var(--gold);
-  animation: marquee 2.4s ease-in-out infinite;
-  pointer-events: none;
+  top: -30px;
+  height: 30px;
+  border-left: 4px dotted #5a4a3a;
 }
-@keyframes marquee {
-  0%   { border-color: var(--gold); }
-  50%  { border-color: #fff6c9; }
-}
+.sign::before { left: 18%; }
+.sign::after { right: 18%; }
 h1 {
   margin: 0;
   font-family: var(--pixel-bold);
   font-size: clamp(2rem, 9vw, 4rem);
   letter-spacing: .1em;
-  color: #fff;
+  color: var(--lamp);
   text-shadow:
-    0 0 6px var(--neon-pink),
-    0 0 14px var(--neon-pink),
-    0 0 28px var(--neon-pink),
-    4px 4px 0 var(--red-dark);
+    0 0 8px rgba(255, 140, 40, .7),
+    0 0 22px rgba(255, 90, 20, .35),
+    4px 4px 0 var(--blood-dark);
+  animation: flicker 7s steps(1) infinite;
 }
 @keyframes flicker {
   0%, 89%, 92%, 95%, 100% { opacity: 1; }
-  90%, 94% { opacity: .35; }
+  90%, 94% { opacity: .45; }
 }
 .subtitle {
-  margin: 14px 0 0;
+  margin: 12px 0 0;
   font-size: 1.35rem;
   letter-spacing: .3em;
-  color: var(--neon-cyan);
-  text-shadow: 0 0 8px var(--neon-cyan);
+  color: var(--dim);
 }
 header h1 { cursor: default; user-select: none; -webkit-tap-highlight-color: transparent; }
 
@@ -175,10 +265,16 @@ header h1 { cursor: default; user-select: none; -webkit-tap-highlight-color: tra
 .floor .roll-btn,
 .floor .pit { pointer-events: auto; }
 
+/* Riveted iron plates */
 .panel {
-  background: var(--panel);
-  border: 3px solid var(--gold);
-  box-shadow: 0 0 0 3px var(--night2), 0 0 14px rgba(255, 207, 74, .3), inset 0 0 12px rgba(255, 207, 74, .12);
+  background:
+    radial-gradient(2px 2px at 6px 6px, #8a6a4a 60%, transparent),
+    radial-gradient(2px 2px at calc(100% - 6px) 6px, #8a6a4a 60%, transparent),
+    radial-gradient(2px 2px at 6px calc(100% - 6px), #8a6a4a 60%, transparent),
+    radial-gradient(2px 2px at calc(100% - 6px) calc(100% - 6px), #8a6a4a 60%, transparent),
+    var(--panel);
+  border: 3px solid var(--iron);
+  box-shadow: 0 0 0 2px #000, inset 0 0 14px rgba(0, 0, 0, .7), 0 4px 14px rgba(0, 0, 0, .6);
 }
 
 .scoreboard {
@@ -195,7 +291,7 @@ header h1 { cursor: default; user-select: none; -webkit-tap-highlight-color: tra
   flex-direction: column;
   min-width: 0;
 }
-.stat .label { font-size: .95rem; letter-spacing: .25em; color: var(--gold); text-transform: uppercase; }
+.stat .label { font-size: .95rem; letter-spacing: .25em; color: var(--gold); opacity: .8; text-transform: uppercase; }
 .stat .value {
   font-family: var(--pixel-bold);
   font-size: 1.2rem;
@@ -206,7 +302,8 @@ header h1 { cursor: default; user-select: none; -webkit-tap-highlight-color: tra
   color: var(--tc, var(--text));
   text-shadow: 0 0 8px var(--tc, transparent);
 }
-.stat .value.low { color: var(--red); text-shadow: 0 0 8px var(--red); animation: blink 1s steps(1) infinite; }
+.stat .value.low { color: var(--ember); text-shadow: 0 0 8px var(--ember); animation: blink-text 1s steps(1) infinite; }
+@keyframes blink-text { 50% { opacity: .2; } }
 
 /* Progress toward this level's goal */
 .goal-bar {
@@ -214,29 +311,32 @@ header h1 { cursor: default; user-select: none; -webkit-tap-highlight-color: tra
   max-width: 640px;
   height: 12px;
   margin-top: 10px;
-  background: rgba(0, 0, 0, .5);
-  border: 2px solid rgba(255, 207, 74, .5);
+  background: rgba(0, 0, 0, .7);
+  border: 2px solid var(--iron);
 }
 .goal-fill {
   height: 100%;
   width: 0;
-  background: repeating-linear-gradient(90deg, var(--gold) 0 8px, #e6b22e 8px 12px);
-  box-shadow: 0 0 10px var(--gold);
+  background: repeating-linear-gradient(90deg, var(--gold) 0 8px, var(--gold-dark) 8px 12px);
+  box-shadow: 0 0 10px rgba(232, 168, 64, .5);
   transition: width .4s steps(8);
 }
-.goal-fill.full { background: repeating-linear-gradient(90deg, #2ee87a 0 8px, #1fb85c 8px 12px); box-shadow: 0 0 12px #2ee87a; }
+.goal-fill.full { background: repeating-linear-gradient(90deg, var(--moss) 0 8px, #4a7a2a 8px 12px); box-shadow: 0 0 12px var(--moss); }
 
 /* ---------- The cave: where the rock wiggles ---------- */
 .table {
+  position: relative;
   width: 100%;
   max-width: 760px;
   margin-top: 18px;
   padding: 12px 16px 14px;
-  background: radial-gradient(ellipse at center, #2c1f3a, #120a1c 85%);
-  border: 8px solid #5a3a1c;
-  outline: 3px solid var(--gold);
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, .7), 0 12px 40px rgba(0, 0, 0, .6);
-  border-radius: 60px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 170, 60, calc(.16 - var(--dark) * .1)), transparent 60%),
+    radial-gradient(ellipse at center, #1a130e, #050302 85%);
+  border: 10px solid var(--timber);
+  border-image: repeating-linear-gradient(90deg, var(--timber) 0 40px, var(--timber-dark) 40px 44px) 10;
+  outline: 3px solid #000;
+  box-shadow: inset 0 0 50px rgba(0, 0, 0, .9), 0 12px 40px rgba(0, 0, 0, .8);
 }
 .rock-info {
   display: flex;
@@ -245,21 +345,21 @@ header h1 { cursor: default; user-select: none; -webkit-tap-highlight-color: tra
   padding: 0 18px;
   font-size: 1rem;
   letter-spacing: .15em;
-  color: #c7a8e8;
+  color: var(--dim);
 }
 .rock-info b { color: var(--gold); font-weight: normal; }
-#rock-depth { color: var(--level-color, var(--neon-pink)); }
+#rock-depth { color: var(--level-color, var(--gold)); }
 .hp {
   position: relative;
   height: 22px;
   margin: 6px 18px 0;
-  background: rgba(0, 0, 0, .55);
-  border: 2px solid #6b5687;
+  background: rgba(0, 0, 0, .7);
+  border: 2px solid var(--iron);
 }
 .hp-fill {
   height: 100%;
   width: 0;
-  background: linear-gradient(#ff5d6e 0 50%, var(--red) 50%);
+  background: linear-gradient(#b0281c 0 50%, var(--blood) 50%);
   transition: width .12s steps(3);
 }
 .hp-text {
@@ -286,11 +386,130 @@ header h1 { cursor: default; user-select: none; -webkit-tap-highlight-color: tra
   position: absolute;
   left: 0;
   top: 0;
+  z-index: 1;
   width: 150px;
   height: 150px;
   will-change: transform;
   pointer-events: none;
-  filter: drop-shadow(0 10px 0 rgba(0, 0, 0, .45));
+  filter: drop-shadow(0 0 10px var(--aura, transparent)) drop-shadow(0 10px 0 rgba(0, 0, 0, .6)) brightness(calc(1 - var(--dark) * .35));
+}
+/* A geode glitters and pulses even in the deepest dark */
+.rock.geode { animation: geode-glow 1.2s steps(4) infinite; }
+@keyframes geode-glow {
+  50% { filter: drop-shadow(0 0 22px var(--r4)) drop-shadow(0 10px 0 rgba(0, 0, 0, .6)) brightness(1.25); }
+}
+
+/* Combo counter in the cave's corner, heating up through the rarity colors */
+.combo {
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  z-index: 2;
+  font-family: var(--pixel-bold);
+  font-size: 1.1rem;
+  text-align: right;
+  color: var(--rc, var(--text));
+  text-shadow: 0 0 10px var(--rc), 3px 3px 0 #000;
+  opacity: 0;
+  transition: opacity .2s;
+  pointer-events: none;
+}
+.combo.on { opacity: 1; }
+.combo small { display: block; margin-top: 4px; font-family: var(--pixel); font-size: .95rem; color: var(--dim); text-shadow: none; }
+
+/* ---------- Rarity effects ---------- */
+/* A shockwave ring */
+.shock {
+  position: fixed;
+  z-index: 18;
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--rc);
+  border-radius: 50%;
+  box-shadow: 0 0 14px var(--rc), inset 0 0 10px var(--rc);
+  transform: translate(-50%, -50%) scale(.2);
+  pointer-events: none;
+  animation: shock .8s ease-out forwards;
+}
+@keyframes shock { to { transform: translate(-50%, -50%) scale(var(--ss, 6)); opacity: 0; } }
+/* A pillar of light from the find up into the dark */
+.beam {
+  position: fixed;
+  z-index: 18;
+  width: var(--bw, 30px);
+  height: 100vh;
+  transform: translate(-50%, -100%) scaleX(0);
+  transform-origin: bottom;
+  background: linear-gradient(to top, var(--rc), transparent);
+  box-shadow: 0 0 30px var(--rc);
+  opacity: .8;
+  pointer-events: none;
+  animation: beam 1.5s ease-out forwards;
+}
+@keyframes beam {
+  15% { transform: translate(-50%, -100%) scaleX(1.4); opacity: 1; }
+  100% { transform: translate(-50%, -100%) scaleX(0); opacity: 0; }
+}
+.sym {
+  position: fixed;
+  z-index: 19;
+  font-family: var(--pixel-bold);
+  color: var(--rc);
+  text-shadow: 0 0 10px var(--rc);
+  pointer-events: none;
+}
+/* The whole screen washes over in the find's color */
+.rarity-flash {
+  position: fixed;
+  inset: 0 !important;
+  z-index: 17;
+  background: radial-gradient(circle, var(--rc), transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  animation: rarity-flash .7s steps(5);
+}
+@keyframes rarity-flash { 20% { opacity: .45; } }
+/* Before a legendary: the lamp dies, only the find's spot stays lit */
+.blackout {
+  position: fixed;
+  inset: 0 !important;
+  z-index: 18;
+  background: radial-gradient(circle at var(--bx, 50%) var(--by, 50%), transparent 30px, #000 120px);
+  pointer-events: none;
+  animation: blackout 1.1s forwards;
+}
+@keyframes blackout {
+  0% { opacity: 0; }
+  20%, 60% { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* Rotating light rays behind a legendary */
+.rays {
+  position: fixed;
+  z-index: 17;
+  width: 140vmax;
+  height: 140vmax;
+  transform: translate(-50%, -50%);
+  background: repeating-conic-gradient(var(--rc) 0 8deg, transparent 8deg 24deg);
+  -webkit-mask: radial-gradient(circle, #000 10%, transparent 55%);
+  mask: radial-gradient(circle, #000 10%, transparent 55%);
+  pointer-events: none;
+  animation: rays 2.6s linear forwards;
+}
+@keyframes rays {
+  0% { transform: translate(-50%, -50%) rotate(0) scale(.2); opacity: 0; }
+  20% { opacity: .6; }
+  100% { transform: translate(-50%, -50%) rotate(90deg) scale(1); opacity: 0; }
+}
+.coin-fly {
+  position: fixed;
+  z-index: 23;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffe0a0, var(--gold) 50%, var(--gold-dark));
+  box-shadow: 0 0 8px var(--gold);
+  pointer-events: none;
 }
 
 .message {
@@ -298,11 +517,12 @@ header h1 { cursor: default; user-select: none; -webkit-tap-highlight-color: tra
   font-size: 1.4rem;
   text-align: center;
   margin: 18px 0 18px;
-  color: #d8c2f2;
+  color: var(--text);
+  opacity: .85;
 }
-.message::after { content: "_"; animation: blink 1s steps(1) infinite; }
-@keyframes blink { 50% { opacity: 0; } }
-.message.win { color: var(--gold); text-shadow: 0 0 10px rgba(255, 207, 74, .6); }
+.message::after { content: "_"; animation: blink-text 1s steps(1) infinite; }
+.message.win { color: var(--gold); text-shadow: 0 0 10px rgba(232, 168, 64, .5); opacity: 1; }
+.message.eerie { color: var(--ember); text-shadow: 0 0 10px rgba(194, 64, 28, .5); opacity: 1; }
 
 /* Help line under the message */
 .hint {
@@ -312,10 +532,10 @@ header h1 { cursor: default; user-select: none; -webkit-tap-highlight-color: tra
   text-align: center;
   font-size: 1.05rem;
   line-height: 1.25;
-  color: #c7a8e8;
+  color: var(--dim);
 }
 
-/* ---------- Big button ---------- */
+/* ---------- Big button: a rusted iron lever plate ---------- */
 .roll-btn {
   width: 100%;
   max-width: 520px;
@@ -323,27 +543,27 @@ header h1 { cursor: default; user-select: none; -webkit-tap-highlight-color: tra
   font-family: var(--pixel-bold);
   font-size: 1.3rem;
   letter-spacing: .2em;
-  color: #fff;
-  text-shadow: 3px 3px 0 var(--red-dark);
-  background: linear-gradient(var(--red) 0 50%, #b5182b 50%);
-  border: 4px solid var(--gold);
-  box-shadow: 0 0 0 4px var(--night2), 0 8px 0 var(--red-dark), 0 0 24px rgba(214, 31, 53, .6);
+  color: #ffd9a0;
+  text-shadow: 3px 3px 0 var(--blood-dark), 0 0 10px rgba(255, 140, 40, .5);
+  background: linear-gradient(#7a1c14 0 50%, #5a120c 50%);
+  border: 4px solid var(--rust);
+  box-shadow: 0 0 0 3px #000, 0 8px 0 var(--blood-dark), 0 0 24px rgba(194, 64, 28, .35);
   cursor: pointer;
   transition: transform .1s steps(2);
-  animation: glow 1.6s steps(4) infinite;
+  animation: glow 3s ease-in-out infinite;
 }
 @keyframes glow {
-  50% { box-shadow: 0 0 0 4px var(--night2), 0 8px 0 var(--red-dark), 0 0 44px rgba(255, 207, 74, .7); }
+  50% { box-shadow: 0 0 0 3px #000, 0 8px 0 var(--blood-dark), 0 0 40px rgba(255, 140, 40, .45); }
 }
 .roll-btn:hover { transform: translateY(-2px); }
-.roll-btn:active { transform: translateY(6px); box-shadow: 0 0 0 4px var(--night2), 0 2px 0 var(--red-dark); }
+.roll-btn:active { transform: translateY(6px); box-shadow: 0 0 0 3px #000, 0 2px 0 var(--blood-dark); }
 /* Mid-run the button is just a reminder, not the main action */
 .roll-btn.mining {
-  color: #c7a8e8;
+  color: var(--dim);
   text-shadow: none;
-  background: linear-gradient(#3a2456 0 50%, #2c1a44 50%);
-  border-color: #6b5687;
-  box-shadow: 0 0 0 4px var(--night2), 0 8px 0 #1b0f2c;
+  background: linear-gradient(#2a2018 0 50%, #1e1712 50%);
+  border-color: var(--iron);
+  box-shadow: 0 0 0 3px #000, 0 8px 0 #0d0a08;
   animation: none;
   font-size: 1rem;
 }
@@ -370,46 +590,50 @@ header h1 { cursor: default; user-select: none; -webkit-tap-highlight-color: tra
   font-family: var(--pixel);
   font-size: 1.15rem;
   letter-spacing: .15em;
-  color: var(--neon-cyan);
-  border-color: #4a3466;
+  color: var(--gold);
   cursor: pointer;
 }
-.insta-btn:hover { border-color: var(--neon-cyan); }
-#shop-ready { color: #2ee87a; }
+.insta-btn:hover { border-color: var(--rust); color: var(--lamp); }
+#shop-ready { color: var(--moss); }
 .footer {
   margin: 22px 0 0;
   font-size: 1rem;
   letter-spacing: .2em;
-  color: #8e72b0;
+  color: var(--dim);
   text-align: center;
 }
+/* Whispers from the dark */
 .joke {
   margin: 8px 0 0;
   min-height: 1.4em;
   max-width: 600px;
   text-align: center;
   font-size: 1.1rem;
-  color: var(--neon-cyan);
-  text-shadow: 0 0 6px rgba(68, 240, 255, .5);
+  font-style: italic;
+  color: #a08a6a;
+  opacity: .8;
 }
-.version { color: #6b5687; }
+.joke.deep { color: var(--ember); text-shadow: 0 0 8px rgba(194, 64, 28, .5); }
+.version { color: #5a4a3a; }
 
-/* ---------- Flashy animations toggle (off by default) ---------- */
-.flash {
-  position: fixed;
-  inset: 0;
-  z-index: 17;
-  pointer-events: none;
-  opacity: 0;
+/* ---------- Flashy toggle (off by default): the lamp sputters harder ---------- */
+html.flashy .darkness { animation: lamp-sputter 2.2s steps(1) infinite; }
+@keyframes lamp-sputter {
+  0%, 100% { opacity: 1; }
+  20% { opacity: .7; }
+  21% { opacity: 1; }
+  55% { opacity: .8; }
+  57% { opacity: 1; }
+  58% { opacity: .6; }
+  60% { opacity: 1; }
 }
-html.flashy h1 { animation: flicker 6s steps(1) infinite; }
-html.flashy .sign::before { animation: marquee .6s steps(2) infinite; }
+html.flashy h1 { animation: flicker 2.5s steps(1) infinite; }
 html.flashy .toast.jackpot, html.flashy .go-score.jackpot { animation: rainbow .6s steps(6) infinite; }
 html.flashy .toast.jackpot.show { animation: toast 1.1s steps(10) both, rainbow .6s steps(6) infinite; }
-.flashy-btn { color: #6b5687; }
-html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); }
+.flashy-btn { color: #5a4a3a; }
+html.flashy .flashy-btn { color: var(--lamp); text-shadow: 0 0 8px var(--lamp); }
 
-/* ---------- Splash (click to enter) ---------- */
+/* ---------- Splash ---------- */
 .splash {
   position: fixed;
   inset: 0;
@@ -421,20 +645,19 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   gap: 28px;
   padding: 16px;
   text-align: center;
-  background: radial-gradient(circle, rgba(40, 10, 60, .9), rgba(8, 3, 16, .98));
+  background: radial-gradient(circle at 50% 40%, rgba(60, 34, 14, .85), rgba(3, 2, 1, .99) 60%);
   cursor: pointer;
 }
 .splash .roll-btn { max-width: 420px; }
-.splash-hint { margin: 0; color: #c7a8e8; font-size: 1.2rem; }
+.splash-hint { margin: 0; color: var(--dim); font-size: 1.2rem; }
 .splash-help {
   padding: 10px 18px 8px;
   font-family: var(--pixel-bold);
   font-size: .8rem;
-  color: var(--neon-cyan);
-  border-color: var(--neon-cyan);
+  color: var(--gold);
   cursor: pointer;
 }
-.splash-help:hover { box-shadow: 0 0 0 3px var(--night2), 0 0 18px var(--neon-cyan); }
+.splash-help:hover { border-color: var(--rust); }
 
 /* ---------- Game over card ---------- */
 .gameover {
@@ -445,10 +668,10 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(8, 3, 16, .7);
+  background: rgba(0, 0, 0, .8);
   opacity: 0;
   visibility: hidden;
-  transition: opacity .4s, visibility .4s;
+  transition: opacity .8s, visibility .8s;
 }
 .gameover.show { opacity: 1; visibility: visible; }
 .go-card {
@@ -458,33 +681,33 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   overflow: auto;
   padding: 26px 22px 22px;
   text-align: center;
-  border-color: var(--tc, var(--gold));
-  transform: scale(.3) rotate(-6deg);
-  transition: transform .6s cubic-bezier(.3, 1.6, .5, 1);
+  border-color: var(--tc, var(--iron));
+  transform: translateY(-40px);
+  transition: transform .8s cubic-bezier(.3, 1.4, .5, 1);
 }
 .gameover.show .go-card { transform: none; }
-.go-head { margin: 0; font-family: var(--pixel-bold); font-size: 1rem; color: var(--gold); letter-spacing: .2em; }
+.go-head { margin: 0; font-family: var(--pixel-bold); font-size: 1rem; color: var(--ember); letter-spacing: .2em; }
 .go-score {
   display: block;
   margin: 18px 0 4px;
   font-family: var(--pixel-bold);
   font-size: clamp(1.8rem, 9vw, 3rem);
   color: var(--tc, var(--text));
-  text-shadow: 0 0 18px var(--tc, transparent), 4px 4px 0 var(--red-dark);
+  text-shadow: 0 0 18px var(--tc, transparent), 4px 4px 0 var(--blood-dark);
   font-variant-numeric: tabular-nums;
 }
 .go-tier { font-size: 1.6rem; letter-spacing: .4em; color: var(--tc, var(--gold)); }
-.go-player-title { display: block; color: #c7a8e8; font-size: 1.15rem; }
-/* Ten pips light up as the level climbs through the tiers */
+.go-player-title { display: block; color: var(--dim); font-size: 1.15rem; }
+/* Ten lamps light up as the depth climbs through the tiers */
 .go-ladder { display: flex; justify-content: center; gap: 6px; margin: 14px 0; }
 .go-ladder span {
   width: 22px;
   height: 22px;
-  background: rgba(255, 255, 255, .08);
-  border: 2px solid rgba(255, 255, 255, .15);
+  background: rgba(255, 255, 255, .05);
+  border: 2px solid rgba(255, 255, 255, .1);
   transition: background .2s, box-shadow .2s, transform .2s;
 }
-.go-ladder span.on { background: var(--c); border-color: var(--c); box-shadow: 0 0 10px var(--c); transform: translateY(-4px); }
+.go-ladder span.on { background: var(--c); border-color: var(--c); box-shadow: 0 0 10px var(--c); transform: translateY(4px); }
 .go-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin: 12px 0 6px; font-size: 1.15rem; text-align: left; }
 .go-stats b { color: var(--gold); font-weight: normal; float: right; }
 .go-section { margin: 14px 0 6px; font-family: var(--pixel-bold); font-size: .7rem; color: var(--gold); letter-spacing: .2em; }
@@ -492,10 +715,10 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
 .go-finds .lb-empty { padding: 4px; }
 .go-row { display: flex; justify-content: center; gap: 8px; margin-bottom: 14px; }
 .go-card .roll-btn { max-width: none; }
-.go-entry { margin: 12px 0; padding: 12px; border: 2px dashed var(--gold); }
+.go-entry { margin: 12px 0; padding: 12px; border: 2px dashed var(--rust); }
 .go-entry[hidden] { display: none; }
 .go-entry-title { margin: 0 0 6px; font-family: var(--pixel-bold); font-size: .9rem; color: var(--gold); }
-.go-entry-label { display: block; color: #c7a8e8; }
+.go-entry-label { display: block; color: var(--dim); }
 .go-entry-row { display: flex; gap: 10px; justify-content: center; margin-top: 6px; }
 .go-entry-row[hidden] { display: none; }
 .go-initials {
@@ -507,18 +730,18 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   text-align: center;
   text-transform: uppercase;
   color: var(--gold);
-  background: #0b0518;
-  border: 3px solid var(--gold);
+  background: #000;
+  border: 3px solid var(--rust);
 }
 .go-save { padding: 8px 16px 6px; font-family: var(--pixel-bold); font-size: .85rem; color: var(--gold); cursor: pointer; }
-.go-skip { color: #c7a8e8; }
+.go-skip { color: var(--dim); }
 .go-entry-name { font-family: var(--pixel-bold); font-weight: normal; color: var(--gold); letter-spacing: .2em; }
 
 /* A find, as a little chip: tinted by rarity */
 .chip {
   display: inline-block;
-  background: rgba(0, 0, 0, .45);
-  border: 2px solid var(--rc, rgba(255, 207, 74, .6));
+  background: rgba(0, 0, 0, .55);
+  border: 2px solid var(--rc, var(--iron));
   color: var(--rc, var(--text));
   padding: 2px 8px;
   font-size: 1rem;
@@ -551,23 +774,23 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   height: 34px;
   display: grid;
   place-items: center;
-  background: radial-gradient(circle at 35% 35%, #fff2b0, var(--gold) 45%, var(--gold-dark));
+  background: radial-gradient(circle at 35% 35%, #ffe0a0, var(--gold) 45%, var(--gold-dark));
   border-radius: 50%;
-  box-shadow: inset -3px -3px 0 rgba(0, 0, 0, .25);
-  color: var(--red-dark);
+  box-shadow: inset -3px -3px 0 rgba(0, 0, 0, .3), 0 0 10px rgba(232, 168, 64, .3);
+  color: var(--blood-dark);
   font-family: var(--pixel-bold);
   font-size: .75rem;
 }
 .coin span { margin-top: 2px; }
 .gold-text { display: flex; flex-direction: column; text-align: left; }
-.gold-badge .label { font-size: .75rem; letter-spacing: .25em; color: var(--gold); text-transform: uppercase; }
+.gold-badge .label { font-size: .75rem; letter-spacing: .25em; color: var(--dim); text-transform: uppercase; }
 .gold-value {
   font-family: var(--pixel-bold);
   font-size: 1.1rem;
   min-width: 4.5ch;
   margin-top: 2px;
   color: var(--gold);
-  text-shadow: 0 0 10px rgba(255, 207, 74, .6);
+  text-shadow: 0 0 10px rgba(232, 168, 64, .4);
 }
 
 .top-buttons {
@@ -589,23 +812,23 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
 }
 #lb-btn { font-family: var(--pixel); font-size: 1.4rem; }
 .mute { color: var(--gold); font-size: 1.6rem; }
-.mute.off { color: #6b5687; text-decoration: line-through; }
+.mute.off { color: #5a4a3a; text-decoration: line-through; }
 
 .jackpot.value, .toast.jackpot, .go-score.jackpot { animation: rainbow 4s linear infinite; }
 @keyframes rainbow {
-  0%   { color: var(--neon-pink); text-shadow: 0 0 12px var(--neon-pink), 4px 4px 0 var(--red-dark); }
-  33%  { color: var(--gold); text-shadow: 0 0 12px var(--gold), 4px 4px 0 var(--red-dark); }
-  66%  { color: var(--neon-cyan); text-shadow: 0 0 12px var(--neon-cyan), 4px 4px 0 var(--red-dark); }
+  0%   { color: var(--ember); text-shadow: 0 0 12px var(--ember), 4px 4px 0 var(--blood-dark); }
+  33%  { color: var(--lamp); text-shadow: 0 0 12px var(--lamp), 4px 4px 0 var(--blood-dark); }
+  66%  { color: var(--r3); text-shadow: 0 0 12px var(--r3), 4px 4px 0 var(--blood-dark); }
 }
 .toast.jackpot.show { animation: toast 1.1s steps(10) both, rainbow 4s linear infinite; }
 
-/* Depth gauge: the shaft scrolls up as you dig down */
+/* Depth gauge: a cable runs down to the cage while the shaft slides past */
 .depth {
   position: fixed;
   right: 12px;
   top: 90px;
   bottom: 24px;
-  width: 64px;
+  width: 80px;
   pointer-events: none;
   z-index: 3;
 }
@@ -615,9 +838,16 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   top: 0;
   bottom: 0;
   width: 12px;
-  border-right: 2px solid rgba(255, 207, 74, .5);
-  background: repeating-linear-gradient(to bottom, rgba(255, 207, 74, .6) 0 3px, transparent 3px 24px) 0 calc(var(--depth) * -1) / 100% 24px;
-  transition: background-position 1s steps(10);
+  border-right: 2px solid rgba(122, 74, 36, .6);
+  background: repeating-linear-gradient(to bottom, rgba(232, 168, 64, .45) 0 2px, transparent 2px 24px) 0 calc(var(--depth) * -1) / 100% 24px;
+  transition: background-position 1.2s steps(12);
+}
+.cable {
+  position: absolute;
+  right: 40px;
+  top: 0;
+  height: 50%;
+  border-left: 2px dashed #5a4a3a;
 }
 .marker {
   position: absolute;
@@ -625,10 +855,10 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   top: 50%;
   white-space: nowrap;
   font-family: var(--pixel-bold);
-  font-size: .7rem;
+  font-size: .65rem;
   color: var(--level-color, var(--gold));
   background: var(--panel);
-  border: 2px solid var(--level-color, var(--gold));
+  border: 2px solid var(--level-color, var(--iron));
   padding: 6px 6px 4px;
   text-shadow: 0 0 6px var(--level-color, var(--gold));
 }
@@ -658,16 +888,16 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   position: relative;
   width: 100%;
   height: 100%;
-  background: #8a7a9c;
+  background: #6a5a4a;
   clip-path: polygon(25% 0, 75% 0, 75% 12%, 100% 12%, 100% 75%, 88% 75%, 88% 100%, 12% 100%, 12% 88%, 0 88%, 0 25%, 25% 25%);
-  box-shadow: inset -5px -5px 0 #4d405c, inset 5px 5px 0 #b8aac8;
+  box-shadow: inset -5px -5px 0 #3a2e24, inset 5px 5px 0 #9a8670;
   animation: tumble var(--spin) steps(8) infinite;
-  opacity: .9;
+  opacity: .85;
 }
 @keyframes tumble { to { transform: rotate(360deg); } }
 .drifter.golden .nugget {
   background: var(--gold);
-  box-shadow: inset -5px -5px 0 #d49a1a, inset 5px 5px 0 #fff2b0;
+  box-shadow: inset -5px -5px 0 var(--gold-dark), inset 5px 5px 0 #ffe0a0;
   filter: drop-shadow(0 0 8px var(--gold));
 }
 .drifter.popped { animation-play-state: paused; pointer-events: none; }
@@ -681,29 +911,35 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
 /* Damage numbers and loot callouts */
 .float {
   position: fixed;
-  z-index: 12;
+  z-index: 13;
   transform: translate(-50%, -50%);
   font-family: var(--pixel-bold);
   font-size: 1rem;
-  color: #fff;
-  text-shadow: 2px 2px 0 var(--red-dark), 0 0 8px var(--gold);
+  color: var(--text);
+  text-shadow: 2px 2px 0 #000, 0 0 8px rgba(255, 140, 40, .5);
   white-space: nowrap;
   pointer-events: none;
   animation: float-up 1s steps(10) forwards;
 }
 .float.gold { color: var(--gold); font-size: 1.2rem; }
-.float.miss { color: #8e72b0; font-size: .7rem; text-shadow: 2px 2px 0 #160828; }
+.float.miss { color: #5a4a3a; font-size: .7rem; }
 /* Crit levels 0-8: weak grey up to a huge orange blaze */
-.float.c0 { color: #9a8fa8; font-size: .75rem; text-shadow: 2px 2px 0 #160828; }
-.float.c1 { color: #fff; }
+.float.c0 { color: #7a6a5a; font-size: .75rem; }
+.float.c1 { color: var(--text); }
 .float.c2 { color: var(--r1); font-size: 1.15rem; }
 .float.c3 { color: var(--r2); font-size: 1.3rem; }
 .float.c4 { color: var(--r3); font-size: 1.5rem; }
-.float.c5, .float.c6, .float.c7, .float.c8 { color: var(--r4); font-size: 1.8rem; text-shadow: 3px 3px 0 var(--red-dark), 0 0 14px var(--r4); }
-.float.loot { font-size: .8rem; animation: float-up 2.4s steps(16) forwards; text-shadow: 2px 2px 0 #160828, 0 0 10px currentColor; }
+.float.c5, .float.c6, .float.c7, .float.c8 { color: var(--r4); font-size: 1.8rem; text-shadow: 3px 3px 0 var(--blood-dark), 0 0 14px var(--r4); }
+.float.loot { font-size: .8rem; animation: float-down 2.6s steps(16) forwards; text-shadow: 2px 2px 0 #000, 0 0 10px currentColor; }
 .float.loot.r4 { font-size: 1.1rem; }
 @keyframes float-up {
   to { transform: translate(-50%, calc(-50% - 70px)); opacity: 0; }
+}
+/* Finds sink, like everything else down here */
+@keyframes float-down {
+  0% { transform: translate(-50%, calc(-50% - 30px)); opacity: 0; }
+  15% { transform: translate(-50%, -50%); opacity: 1; }
+  100% { transform: translate(-50%, calc(-50% + 40px)); opacity: 0; }
 }
 
 /* ---------- Toast & particles ---------- */
@@ -719,7 +955,7 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   line-height: 1.4;
   white-space: pre-line;
   color: var(--tc, var(--gold));
-  text-shadow: 0 0 14px var(--tc, var(--gold)), 4px 4px 0 var(--red-dark);
+  text-shadow: 0 0 14px var(--tc, var(--gold)), 4px 4px 0 var(--blood-dark);
   pointer-events: none;
   z-index: 20;
 }
@@ -730,7 +966,7 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   25%  { transform: translate(-50%, -50%) scale(1.2) rotate(2deg); opacity: 1; }
   40%  { transform: translate(-50%, -50%) scale(1); }
   80%  { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-  100% { transform: translate(-50%, -120%) scale(1); opacity: 0; }
+  100% { transform: translate(-50%, -20%) scale(1); opacity: 0; }
 }
 .fx {
   position: fixed;
@@ -741,7 +977,7 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   z-index: 19;
 }
 
-/* Achievement unlocked: a banner sliding in from the top */
+/* Achievement unlocked: a plate sliding down from the top */
 .ach-toast {
   position: fixed;
   top: 70px;
@@ -750,13 +986,12 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   max-width: 92vw;
   padding: 10px 16px 8px;
   text-align: center;
-  border-color: #2ee87a;
-  box-shadow: 0 0 0 3px var(--night2), 0 0 24px rgba(46, 232, 122, .5);
+  border-color: var(--moss);
   pointer-events: none;
   animation: ach-in 3.2s steps(16) forwards;
 }
-.ach-toast small { display: block; font-family: var(--pixel-bold); font-size: .6rem; color: #2ee87a; letter-spacing: .2em; }
-.ach-toast b { display: block; margin-top: 6px; font-weight: normal; font-size: 1.3rem; color: #fff; }
+.ach-toast small { display: block; font-family: var(--pixel-bold); font-size: .6rem; color: var(--moss); letter-spacing: .2em; }
+.ach-toast b { display: block; margin-top: 6px; font-weight: normal; font-size: 1.3rem; color: var(--text); }
 @keyframes ach-in {
   0%   { transform: translate(-50%, -160%); }
   12%, 82% { transform: translate(-50%, 0); }
@@ -771,7 +1006,7 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   display: grid;
   place-items: center;
   padding: 16px;
-  background: rgba(8, 3, 16, .8);
+  background: rgba(0, 0, 0, .85);
 }
 .modal[hidden] { display: none; }
 .modal-box {
@@ -785,7 +1020,7 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
 .wide-box { max-width: 720px; }
 .modal-box h2 { margin: 0; font-family: var(--pixel-bold); font-size: 1.1rem; color: var(--gold); text-align: center; }
 .modal-box h3 { margin: 18px 0 6px; font-family: var(--pixel-bold); font-size: .9rem; color: var(--gold); }
-.modal-sub { margin: 6px 0 12px; text-align: center; color: #8e72b0; }
+.modal-sub { margin: 6px 0 12px; text-align: center; color: var(--dim); }
 .modal-close {
   position: absolute;
   top: 8px;
@@ -795,19 +1030,19 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   font-size: 1.2rem;
   color: var(--gold);
   background: none;
-  border: 2px solid var(--gold);
+  border: 2px solid var(--iron);
   cursor: pointer;
 }
 .lb-table { width: 100%; border-collapse: collapse; font-size: 1.15rem; }
-.lb-table td { padding: 5px 6px; border-bottom: 1px solid rgba(255, 207, 74, .15); }
-.lb-table tr.mine { background: rgba(255, 207, 74, .15); }
-.lb-name { font-family: var(--pixel-bold); font-size: .9rem; color: #fff; }
+.lb-table td { padding: 5px 6px; border-bottom: 1px solid rgba(122, 74, 36, .3); }
+.lb-table tr.mine { background: rgba(232, 168, 64, .12); }
+.lb-name { font-family: var(--pixel-bold); font-size: .9rem; color: var(--text); }
 .lb-score { text-align: right; color: var(--tc, var(--gold)); }
 .lb-tier { font-family: var(--pixel-bold); font-size: .7rem; color: var(--tc, var(--gold)); }
-.lb-empty { text-align: center; color: #8e72b0; padding: 18px; }
-.lb-clear { display: block; margin: 14px auto 0; font: inherit; color: #8e72b0; background: none; border: 0; text-decoration: underline; cursor: pointer; }
+.lb-empty { text-align: center; color: var(--dim); padding: 18px; }
+.lb-clear { display: block; margin: 14px auto 0; font: inherit; color: var(--dim); background: none; border: 0; text-decoration: underline; cursor: pointer; }
 .tier-table td { vertical-align: top; font-size: 1.05rem; }
-.tier-table i { color: #8e72b0; }
+.tier-table i { color: var(--dim); }
 .help-steps { margin: 12px 0 0; padding-left: 22px; font-size: 1.15rem; line-height: 1.3; }
 .help-steps li { margin-bottom: 6px; }
 .help-steps b { color: var(--gold); font-weight: normal; }
@@ -820,8 +1055,8 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   font: inherit;
   font-size: 1rem;
   color: var(--rc);
-  background: rgba(0, 0, 0, .4);
-  border: 2px solid rgba(255, 255, 255, .15);
+  background: rgba(0, 0, 0, .5);
+  border: 2px solid rgba(255, 255, 255, .1);
   cursor: pointer;
 }
 .tab.on { border-color: var(--rc); box-shadow: 0 0 10px var(--rc); }
@@ -834,20 +1069,20 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   line-height: 1.05;
   color: var(--text);
   text-align: center;
-  background: rgba(0, 0, 0, .4);
+  background: rgba(0, 0, 0, .5);
   border: 2px solid var(--rc);
   cursor: pointer;
 }
-.item.unknown { border-color: rgba(255, 255, 255, .1); color: #4a3466; cursor: default; }
+.item.unknown { border-color: rgba(255, 255, 255, .06); color: #3a2e24; cursor: default; }
 .item.empty { opacity: .5; }
-.item.sel { box-shadow: 0 0 12px var(--rc); background: rgba(255, 255, 255, .06); }
-.item .gem { display: block; width: 22px; height: 22px; margin: 0 auto 4px; background: var(--rc); clip-path: polygon(30% 0, 70% 0, 100% 35%, 50% 100%, 0 35%); }
-.item.unknown .gem { background: #2a1a3a; }
+.item.sel { box-shadow: 0 0 12px var(--rc); background: rgba(255, 255, 255, .05); }
+.item .gem { display: block; margin: 0 auto 4px; font-family: var(--pixel-bold); font-size: 1.2rem; color: var(--rc); text-shadow: 0 0 8px var(--rc); }
+.item.unknown .gem { color: #2a2018; text-shadow: none; }
 .item .qty { display: block; margin-top: 2px; font-family: var(--pixel-bold); font-size: .6rem; color: var(--gold); }
-.detail { margin-top: 12px; padding: 12px; border: 2px dashed var(--rc, var(--gold)); }
+.detail { margin-top: 12px; padding: 12px; border: 2px dashed var(--rc, var(--rust)); }
 .detail[hidden] { display: none; }
 .detail h4 { margin: 0; font-family: var(--pixel-bold); font-size: .85rem; color: var(--rc); }
-.detail p { margin: 6px 0; color: #e6d6ff; font-size: 1.05rem; }
+.detail p { margin: 6px 0; color: var(--text); font-size: 1.05rem; }
 .detail .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .small-btn {
   padding: 6px 12px 4px;
@@ -858,21 +1093,21 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
 }
 .small-btn:disabled { opacity: .4; cursor: default; }
 
-/* Shop: one card per upgrade */
+/* Shop: one plate per upgrade */
 .shop-list { display: grid; gap: 10px; }
 .upgrade {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 4px 12px;
   padding: 10px 12px;
-  background: rgba(0, 0, 0, .35);
-  border: 2px solid rgba(255, 207, 74, .35);
+  background: rgba(0, 0, 0, .45);
+  border: 2px solid var(--iron);
 }
-.upgrade.can { border-color: #2ee87a; box-shadow: 0 0 12px rgba(46, 232, 122, .35); }
+.upgrade.can { border-color: var(--moss); box-shadow: 0 0 12px rgba(138, 194, 90, .3); }
 .upgrade h4 { margin: 0; font-family: var(--pixel-bold); font-size: .75rem; color: var(--gold); }
-.upgrade .lvl { color: var(--neon-cyan); font-size: 1rem; }
-.upgrade p { grid-column: 1 / -1; margin: 0; color: #c7a8e8; font-size: 1rem; }
-.upgrade .effect { color: #fff; }
+.upgrade .lvl { color: var(--lamp); font-size: 1rem; }
+.upgrade p { grid-column: 1 / -1; margin: 0; color: var(--dim); font-size: 1rem; }
+.upgrade .effect { color: var(--text); }
 .upgrade .cost { grid-column: 1; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .upgrade .cost .chip { font-size: .95rem; animation: none; }
 .upgrade .cost .chip.short { border-style: dashed; opacity: .55; }
@@ -880,36 +1115,77 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
 
 /* Achievements */
 .ach-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
-.ach { padding: 6px 8px; background: rgba(0, 0, 0, .35); border: 2px solid rgba(255, 255, 255, .08); color: #4a3466; font-size: 1rem; }
+.ach { padding: 6px 8px; background: rgba(0, 0, 0, .45); border: 2px solid rgba(255, 255, 255, .05); color: #3a2e24; font-size: 1rem; }
 .ach b { display: block; font-weight: normal; }
-.ach.on { border-color: #2ee87a; color: #c7a8e8; }
-.ach.on b { color: #2ee87a; }
+.ach.on { border-color: var(--moss); color: var(--dim); }
+.ach.on b { color: var(--moss); }
 
-/* ---------- Level up: a mine cart banner ---------- */
-.level-banner {
+/* ---------- Level up: the cage goes down ---------- */
+.cage {
   position: fixed;
-  left: 50%;
-  top: 30%;
+  inset: 0;
   z-index: 21;
-  transform: translateX(-50%);
+  pointer-events: none;
+  overflow: hidden;
+}
+/* The shaft wall rushing upward past the cage */
+.cage-shaft {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(2px 2px at 30% 40%, rgba(232, 168, 64, .7) 60%, transparent) 0 0 / 160px 180px,
+    repeating-linear-gradient(to bottom, var(--timber) 0 14px, var(--timber-dark) 14px 18px, transparent 18px 200px) 0 0 / 100% 200px,
+    repeating-linear-gradient(to bottom, var(--rock) 0 26px, #17120e 26px 52px, var(--rock-dark) 52px 60px) 0 0 / 100% 60px,
+    var(--black);
+  animation: shaft-rush .35s linear infinite;
+}
+@keyframes shaft-rush { to { background-position: 0 -180px, 0 -200px, 0 -60px, 0 0; } }
+/* The cage's own lamp swinging: light inside, dark outside */
+.cage-shaft::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 40%, rgba(255, 170, 60, .18), rgba(0, 0, 0, .85) 55%);
+  animation: lamp-swing 1.4s ease-in-out infinite alternate;
+}
+@keyframes lamp-swing { from { transform: translateX(-4%); } to { transform: translateX(4%); } }
+/* Iron gate bars sliding shut from both sides */
+.cage-gate {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 51%;
+  background: repeating-linear-gradient(90deg, #2a2018 0 8px, transparent 8px 46px);
+  border-top: 14px solid #2a2018;
+  border-bottom: 14px solid #2a2018;
+}
+.cage-gate.left { left: 0; }
+.cage-gate.right { right: 0; }
+.cage-sign {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  transform: translate(-50%, -50%);
   padding: 14px 22px 10px;
   text-align: center;
   white-space: nowrap;
-  pointer-events: none;
-  border-color: var(--level-color, var(--gold));
-  animation: banner 2.2s steps(14) forwards;
+  border-color: var(--level-color, var(--iron));
 }
-.level-banner small { display: block; font-family: var(--pixel-bold); font-size: .65rem; letter-spacing: .25em; color: var(--neon-cyan); }
-.level-banner b { display: block; margin-top: 8px; font-family: var(--pixel-bold); font-weight: normal; font-size: clamp(1.1rem, 5vw, 2rem); color: var(--level-color, var(--gold)); text-shadow: 0 0 14px var(--level-color, var(--gold)); }
-.level-banner span { display: block; margin-top: 6px; color: #c7a8e8; }
-@keyframes banner {
-  0%   { transform: translate(-50%, -60vh); }
-  20%, 80% { transform: translate(-50%, 0); }
-  100% { transform: translate(-50%, 60vh); opacity: 0; }
+.cage-sign small { display: block; font-family: var(--pixel-bold); font-size: .65rem; letter-spacing: .25em; color: var(--ember); }
+.cage-sign b { display: block; margin-top: 8px; font-family: var(--pixel-bold); font-weight: normal; font-size: clamp(1.2rem, 6vw, 2.2rem); color: var(--level-color, var(--gold)); text-shadow: 0 0 14px var(--level-color, var(--gold)); font-variant-numeric: tabular-nums; }
+.cage-sign span { display: block; margin-top: 6px; color: var(--dim); }
+
+/* A rare find: the floor drops out from under you for a moment */
+.lurch { animation: lurch .6s cubic-bezier(.3, 1.8, .6, 1); }
+@keyframes lurch {
+  0% { transform: translateY(0); }
+  25% { transform: translateY(18px); }
+  100% { transform: translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .stars, h1, .sign::before, .roll-btn, .message::after, .nugget { animation: none; }
+  .dust, h1, .roll-btn, .message::after, .nugget, .darkness, .cage-shaft, .cage-shaft::after, .eye { animation: none; }
+  .eye-pair { animation-duration: .01s; }
   .shaftwall, .shaft { transition: none; }
 }
 
@@ -924,10 +1200,10 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   .top-buttons { position: absolute; top: 8px; right: 8px; gap: 5px; }
   .icon-btn { width: 36px; height: 36px; font-size: .8rem; }
   #lb-btn { font-size: 1.1rem; }
-  header { padding: 4px 12px 0; }
-  .stage { margin-top: 66px; }
+  header { padding: 22px 12px 0; }
+  .stage { margin-top: 56px; }
   .sign { padding: 10px 12px 8px; }
-  .sign::before { inset: -8px; border-width: 4px; }
+  .sign::before, .sign::after { top: -22px; height: 22px; }
   h1 { font-size: 1.7rem; }
   .subtitle { margin-top: 8px; font-size: .85rem; letter-spacing: .12em; }
   .floor { padding: 10px 10px 16px; }
@@ -935,7 +1211,7 @@ html.flashy .flashy-btn { color: var(--gold); text-shadow: 0 0 8px var(--gold); 
   .stat { padding: 5px 2px 4px; }
   .stat .label { font-size: .7rem; letter-spacing: .05em; }
   .stat .value { font-size: .7rem; margin-top: 4px; }
-  .table { margin-top: 10px; border-radius: 28px; border-width: 5px; padding: 8px 8px 8px; }
+  .table { margin-top: 10px; border-width: 6px; padding: 8px 8px 8px; }
   .rock-info { padding: 0 8px; font-size: .85rem; letter-spacing: .05em; }
   .hp { margin: 4px 8px 0; }
   .pit { height: 210px; }

@@ -10,7 +10,8 @@ The look and feel come from [Dicele](../Dicele); the gameplay, items, upgrades a
 2. **Damage** = (strength × 10 + pickaxe × 100) ÷ hardness, ±10% plus agility, times a crit roll (0.4× up to 3.6×).
 3. **Every rock** pays score (80 × dimension × luck × player power) and drops one find: common stone, uncommon mineral, rare gem, epic gem or legendary element. Luckier rocks drop better finds.
 4. **Reach the goal** (400 × 1.15^level) before the rocks run out and you go a level deeper with 6 + 3 × level rocks. Out of rocks below the goal ends the run.
-5. **Finds, gold, upgrades and achievements are kept forever.** Sell finds in the bag; the shop's 8 upgrades (up to 100 levels each) cost gold and specific finds.
+5. **Deeper is darker.** Every level the cage takes you 50 m down. The lamplight shrinks, all sound drops half a semitone and gains echo (an octave at most), the mine's drone, whispers and heartbeat grow, and more pairs of eyes open in the dark and turn to watch you. Rare finds make the shaft lurch and every eye go wide.
+6. **Finds, gold, upgrades and achievements are kept forever.** Sell finds in the bag; the shop's 8 upgrades (up to 100 levels each) cost gold and specific finds.
 
 Buttons: 🏆 leaderboard (this device), ? rules, ⚡ flashy animations, ♪ sound, 🎒 bag, 🛒 shop, 🏅 achievements.
 

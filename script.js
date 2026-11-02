@@ -22,8 +22,10 @@ const depthLabelEl = $("depth-label");
 const topLevelEl = $("top-level");
 const driftEl = $("drift");
 const muteBtn = $("mute");
+const stageEl = $("stage");
+const darknessEl = $("darkness");
 
-const VERSION = "1.0.0";
+const VERSION = "1.2.0";
 
 // Ten tiers by the deepest level a run reaches: label, player title, verdict, color
 const TIERS = [
@@ -53,11 +55,31 @@ function paintTier(el, tier) {
 const BASE_STATS = { strength: 1, agility: 1, luck: 1, pickaxe: 1, rockLevel: 1, worldLevel: 1, slowMotion: 100, power: 100 };
 const START_ROCKS = 9;
 const rocksForLevel = (level) => 6 + level * 3;
+// Every level is another 50 m down
+const METERS_PER_LEVEL = 50;
+const depthText = (level) => `-${fmt(level * METERS_PER_LEVEL)} M`;
+// How dark it is: 0 at the first level, creeping toward 1 in the abyss
+const darkFor = (level) => 1 - 1 / (1 + (level - 1) * 0.12);
+// Pairs of eyes watching from the dark: one at the start, more on every level
+const eyesFor = (level) => Math.min(90, Math.round(1 + (level - 1) * 1.6));
 // Every level's goal is 15% above the last one's
 const goalFor = (level) => Math.floor(400 * Math.pow(1.15, level));
 // Holding on the rock swings this often
 const SWING_MS = 100;
 const RARITY_NAMES = ["COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY"];
+// One symbol per rarity, shown wherever a find appears
+const RARITY_SYMBOLS = ["◇", "◆", "✦", "❖", "✸"];
+
+// Balance on top of RogueMiner's numbers: hits land harder, a crit roll never drops below
+// 0.6x, and every hit in a row adds 4% (up to 3x at a 50 combo). A miss or a pause breaks it
+const DAMAGE_BOOST = 1.5;
+const COMBO_STEP = 0.04;
+const COMBO_CAP = 50;
+const COMBO_WINDOW_MS = 1500;
+// About one rock in 25 is a geode: double health, glittering, three boosted finds and lots of gold
+const GEODE_CHANCE = 0.04;
+// Finds of the plainer rarities come in small stacks
+const STACK_SIZES = [[1, 3], [1, 2], [1, 1], [1, 1], [1, 1]];
 const RARITY_GROUPS = ["STONES", "MINERALS", "GEMS", "PRECIOUS", "ELEMENTS"];
 const RARITY_COLORS = ["#c7c7c7", "#40d959", "#408cff", "#a64df2", "#ffa61a"];
 const STAT_LABELS = {
@@ -178,32 +200,43 @@ function addGold(n) {
 let phase = "idle";
 let run = state.run;
 let topLevel = state.stats.levelHigh;
-topLevelEl.textContent = topLevel;
+topLevelEl.textContent = depthText(topLevel);
 
-// Rotating mine jokes in the footer
-const JOKES = [
-  "Rock bottom is just the first level down here",
-  "This mine is gneiss. Don't take it for granite",
-  "Ore you going to hit that?",
-  "The canary called in sick again",
-  "Hard rocks wiggle slower. Life lessons",
-  "Safety helmet sold separately",
-  "Shaft depth: yes",
-  "A legendary drop: 0.1%. The bragging: 100%",
-  "Diamonds are forever. Pebbles are for now",
-  "Our pickaxes are unionized. Please tip them",
-  "Geologists rock. Miners just roll with it",
-  "Quartz of coffee keep the night shift going",
-  "Every stone tells a story. Mostly about pressure",
-  "No rocks were harmed. Well. Most of them",
+// Whispers in the footer: what you hear changes the deeper you go
+const WHISPERS = [
+  [
+    "The canary is still singing. For now",
+    "Mind your head. And your lamp",
+    "Keep the lamp lit. Always keep the lamp lit",
+    "Every miner hears the knocking eventually",
+    "Count your rocks. Not the eyes",
+    "The old shafts were sealed for a reason",
+  ],
+  [
+    "The canary stopped singing",
+    "Something knocks back",
+    "The walls are warmer than they should be",
+    "Was that your echo?",
+    "Don't count the eyes",
+    "The cage cable groans at night",
+  ],
+  [
+    "They have been waiting for you",
+    "No one remembers the way up",
+    "The eyes don't blink anymore",
+    "Dig. They like it when you dig",
+    "Your lamp is the only light for miles",
+    "You were always going to come down here",
+  ],
 ];
-let jokeIndex = Math.floor(Math.random() * JOKES.length);
+const depthBand = (level) => (level < 5 ? 0 : level < 12 ? 1 : 2);
+let jokeIndex = Math.floor(Math.random() * 6);
 function nextJoke() {
-  jokeEl.textContent = "⛏ " + JOKES[jokeIndex++ % JOKES.length] + " ⛏";
-  jokeEl.animate([{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }], {
-    duration: 400,
-    easing: "steps(4)",
-  });
+  const band = depthBand(run ? run.level : 1);
+  const lines = WHISPERS[band];
+  jokeEl.textContent = "\u2026 " + lines[jokeIndex++ % lines.length] + " \u2026";
+  jokeEl.classList.toggle("deep", band === 2);
+  jokeEl.animate([{ opacity: 0 }, { opacity: 0.8 }], { duration: 1200, easing: "steps(6)" });
 }
 nextJoke();
 setInterval(nextJoke, 7000);
@@ -216,6 +249,10 @@ muteBtn.classList.toggle("off", muted);
 let audioCtx = null;
 let master = null;
 let reverb = null;
+// Set by depth: every level pitches all sound down half a semitone (an octave at most)
+// and adds cave echo
+let pitch = 1;
+let echo = 0;
 
 // Lazily creates the audio graph: everything -> compressor (keeps stacked fanfares from
 // clipping), with a send into a generated cave reverb for the epic stuff
@@ -266,8 +303,8 @@ function sfx(freq, dur, { type = "square", vol = 0.04, to = null, delay = 0, att
   const osc = ac.createOscillator();
   const gain = ac.createGain();
   osc.type = type;
-  osc.frequency.setValueAtTime(freq, t);
-  if (to) osc.frequency.exponentialRampToValueAtTime(to, t + dur);
+  osc.frequency.setValueAtTime(freq * pitch, t);
+  if (to) osc.frequency.exponentialRampToValueAtTime(to * pitch, t + dur);
   if (attack) {
     gain.gain.setValueAtTime(0.0001, t);
     gain.gain.exponentialRampToValueAtTime(vol, t + attack);
@@ -276,7 +313,7 @@ function sfx(freq, dur, { type = "square", vol = 0.04, to = null, delay = 0, att
   }
   gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   osc.connect(gain).connect(master);
-  send(gain, wet);
+  send(gain, wet + echo);
   osc.start(t);
   osc.stop(t + dur + 0.02);
 }
@@ -305,60 +342,62 @@ function noise(dur, { vol = 0.1, delay = 0, hp = 1000, lp = 0, attack = 0, wet =
     gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   }
   src.connect(filter).connect(gain).connect(master);
-  send(gain, wet);
+  send(gain, wet + echo);
   src.start(t);
 }
 
-/* ---------- Epic orchestra (all synthesized) ---------- */
+/* ---------- Mine instruments (all synthesized) ---------- */
 
 const semis = (root, s) => root * Math.pow(2, s / 12);
 
-// Brass: two detuned saws through a low-pass that opens up like a horn blat
-function brass(freq, dur, { vol = 0.05, delay = 0, wet = 0.3 } = {}) {
-  const ac = audio();
-  if (!ac) return;
-  const t = ac.currentTime + delay;
-  const filter = ac.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.Q.value = 2;
-  filter.frequency.setValueAtTime(300, t);
-  filter.frequency.exponentialRampToValueAtTime(3200, t + 0.08);
-  filter.frequency.exponentialRampToValueAtTime(1100, t + Math.min(dur, 0.6));
-  const gain = ac.createGain();
-  gain.gain.setValueAtTime(0.0001, t);
-  gain.gain.exponentialRampToValueAtTime(vol, t + 0.04);
-  gain.gain.setValueAtTime(vol, t + dur * 0.7);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  filter.connect(gain).connect(master);
-  send(gain, wet);
-  for (const cents of [-8, 8]) {
-    const osc = ac.createOscillator();
-    osc.type = "sawtooth";
-    osc.frequency.value = freq;
-    osc.detune.value = cents;
-    osc.connect(filter);
-    osc.start(t);
-    osc.stop(t + dur + 0.05);
+// Every tune in the mine comes from one dark scale: D minor pentatonic, plus the flat second
+// that creeps in down deep
+const MINE_ROOT = 146.83; // D3
+const MINE_SCALE = [0, 3, 5, 7, 10];
+function mineNote(degree, octave = 0) {
+  const oct = Math.floor(degree / MINE_SCALE.length);
+  const step = ((degree % MINE_SCALE.length) + MINE_SCALE.length) % MINE_SCALE.length;
+  return semis(MINE_ROOT, 12 * (oct + octave) + MINE_SCALE[step]);
+}
+
+// Struck metal: a bell, an anvil or a rail. Inharmonic partials that ring and die away
+const METAL_PARTIALS = [[1, 1, 1], [2.76, 0.35, 0.45], [5.4, 0.18, 0.2], [8.93, 0.1, 0.08]];
+function metal(freq, dur, { vol = 0.06, delay = 0, wet = 0.4, bright = 1 } = {}) {
+  for (const [ratio, gain, length] of METAL_PARTIALS) {
+    // Partials above hearing (and the audio limit) are left out
+    if (freq * ratio * pitch > 16000) break;
+    sfx(freq * ratio, dur * length, { type: "sine", vol: vol * gain * (ratio > 1 ? bright : 1), delay, wet });
   }
+  noise(0.012, { vol: vol * 0.6, delay, hp: 4000 });
 }
 
-const brassChord = (root, chord, dur, delay, vol = 0.035) =>
-  chord.forEach((s) => brass(semis(root, s), dur, { vol, delay }));
-
-// Timpani: a sine that drops onto its pitch, plus a felt-mallet thump, drenched in hall
-function timpani(freq, { vol = 0.35, delay = 0 } = {}) {
-  sfx(freq * 1.5, 1.4, { type: "sine", vol, to: freq, delay, wet: 0.5 });
-  sfx(freq * 2.01, 0.6, { type: "sine", vol: vol * 0.25, to: freq * 2, delay, wet: 0.4 });
-  noise(0.12, { vol: vol * 0.5, delay, lp: 600, wet: 0.3 });
+// A pickaxe biting stone: a sharp clink, grit, and a dull thud underneath
+function pickaxe(power = 1, delay = 0, wet = 0) {
+  noise(0.04, { vol: 0.08 * power, hp: 2500, delay, wet });
+  noise(0.08, { vol: 0.12 * power, lp: 500, delay, wet });
+  metal(between(1900, 2400), 0.12, { vol: 0.035 * power, delay, wet, bright: 0.6 });
 }
 
-// Sub boom: a huge low drop you feel more than hear
+// A chain rattling: a run of tiny clinks
+function chain(count = 6, delay = 0) {
+  for (let i = 0; i < count; i++) metal(between(2600, 3600), 0.05, { vol: 0.015, delay: delay + i * between(0.03, 0.06), wet: 0.2 });
+}
+
+// The miner's steam whistle: two detuned voices with a wobble
+function whistle(freq, dur, delay = 0, vol = 0.03) {
+  for (const d of [1, 1.006]) sfx(freq * d, dur, { type: "triangle", vol, delay, attack: 0.08, wet: 0.5 });
+  noise(dur, { vol: vol * 0.6, delay, hp: 3000, attack: 0.08, wet: 0.3 });
+}
+
+// Dynamite going off somewhere: a huge low drop you feel more than hear
 function boom(delay = 0) {
   sfx(70, 1.8, { type: "sine", vol: 0.6, to: 28, delay, wet: 0.2 });
   noise(0.6, { vol: 0.3, delay, lp: 200, wet: 0.4 });
+  // Pebbles raining down after it
+  for (let i = 0; i < 6; i++) noise(0.03, { vol: 0.05, delay: delay + 0.3 + i * between(0.06, 0.14), hp: 1800, wet: 0.3 });
 }
 
-// The mine cart going down: a low rumble that sinks, with clattering rails under it
+// The cage going down: a sinking motor, the cable humming, wheels clacking on the guide rails
 function cartRumble(dur) {
   const ac = audio();
   if (!ac) return;
@@ -367,8 +406,8 @@ function cartRumble(dur) {
   const filter = ac.createBiquadFilter();
   const gain = ac.createGain();
   osc.type = "sawtooth";
-  osc.frequency.setValueAtTime(95, t);
-  osc.frequency.exponentialRampToValueAtTime(48, t + dur);
+  osc.frequency.setValueAtTime(95 * pitch, t);
+  osc.frequency.exponentialRampToValueAtTime(48 * pitch, t + dur);
   filter.type = "lowpass";
   filter.frequency.setValueAtTime(600, t);
   filter.frequency.exponentialRampToValueAtTime(220, t + dur);
@@ -379,17 +418,16 @@ function cartRumble(dur) {
   osc.connect(filter).connect(gain).connect(master);
   osc.start(t);
   osc.stop(t + dur + 0.02);
+  chain(10);
   for (let i = 0; i < dur / 0.16; i++) noise(0.04, { vol: 0.06, delay: i * 0.16, hp: 2500 });
 }
 
-// A bright chime with a long ring
+// The landing bell
 function ding(vol = 0.1, delay = 0) {
-  sfx(1319, 1.4, { type: "sine", vol, delay, wet: 0.4 });
-  sfx(1319 * 2.76, 0.5, { type: "sine", vol: vol * 0.25, delay, wet: 0.4 });
-  sfx(1319 * 5.4, 0.18, { type: "sine", vol: vol * 0.12, delay });
+  metal(mineNote(10), 1.4, { vol, delay, wet: 0.5 });
 }
 
-// Choir: soft detuned triangles fading in, mostly reverb
+// Voices from below: soft detuned triangles fading in, mostly echo
 function choir(root, chord, dur, delay = 0) {
   for (const s of chord) {
     for (const d of [0.996, 1, 1.004]) {
@@ -398,64 +436,101 @@ function choir(root, chord, dur, delay = 0) {
   }
 }
 
-// Victory fanfare: longer and fuller the higher the tier (0-9)
+// A phrase of the mine tune on bells: degrees of the mine scale, null = rest
+function bellPhrase(degrees, step, { octave = 0, vol = 0.05, delay = 0, dur = 0.9 } = {}) {
+  degrees.forEach((d, i) => {
+    if (d !== null) metal(mineNote(d, octave), dur, { vol, delay: delay + i * step, wet: 0.5 });
+  });
+}
+
+// The miners' work song, the heart of every fanfare: pick, pick, bell
+const WORK_SONG = [0, 2, 3, 4, 3, 2, 0, null];
+
+// Victory: the work song on bells over pickaxe strokes, bigger and fuller the higher the tier
 function victory(tier) {
-  const root = semis(196, Math.min(tier, 9)); // G3, rising a semitone per tier
+  const step = 0.17;
+  const lift = Math.min(tier, 9) % 5;
+  const song = WORK_SONG.map((d) => (d === null ? null : d + lift));
   boom(0);
-  timpani(semis(root, -12), { delay: 0 });
-  // I - IV - V - I, brass stabs on each, timpani under
-  const progression = [[0, 4, 7, 12], [5, 9, 12, 17], [7, 11, 14, 19], [12, 16, 19, 24]];
-  const chords = tier < 3 ? 2 : 4;
-  for (let i = 0; i < chords; i++) {
-    const at = 0.15 + i * 0.42;
-    const last = i === chords - 1;
-    brassChord(root, progression[last ? 3 : i], last ? 2.4 : 0.38, at);
-    timpani(semis(root, progression[i][0] - 12), { delay: at, vol: 0.25 });
+  bellPhrase(song, step, { vol: 0.06, delay: 0.1 });
+  for (let i = 0; i < song.length; i += 2) pickaxe(0.8, 0.1 + i * step, 0.3);
+  metal(mineNote(lift, -1), 2.4, { vol: 0.09, delay: 0.1 + song.length * step, wet: 0.6 });
+  if (tier >= 3) {
+    bellPhrase(song, step, { octave: 1, vol: 0.03, delay: 0.1 + step / 2 });
+    choir(mineNote(lift, -1), [0, 7, 12], 3.2, 0.4);
   }
-  if (tier >= 3) choir(root, [12, 16, 19, 24], 3.2, 0.5);
   if (tier >= 6) {
-    noise(2.6, { vol: 0.16, delay: 0.15 + (chords - 1) * 0.42, hp: 5000, wet: 0.5 });
-    [24, 28, 31, 36].forEach((s, i) => brass(semis(root, s), 0.18, { vol: 0.03, delay: 0.1 + i * 0.07 }));
+    whistle(mineNote(lift + 4, 1), 1.2, 0.1 + song.length * step);
+    chain(12, 0.2);
   }
 }
 
-const arp = (notes, step, opts) => notes.forEach((f, i) => sfx(f, 0.14, { ...opts, delay: i * step }));
 const kick = (delay) => sfx(150, 0.35, { type: "sine", vol: 0.5, to: 40, delay });
 
 const SOUND = {
-  // A pickaxe strike: a stony crack plus a clank that rings higher the bigger the crit
-  hit: (crit) => {
-    noise(0.05, { vol: 0.14, hp: 1400 });
-    sfx(160 + crit * 70, 0.07, { type: "triangle", vol: 0.09, to: 70 });
-    if (crit >= 3) sfx(700 + crit * 120, 0.12, { vol: 0.03, to: 1400 + crit * 200 });
+  // The pickaxe strike: harder crits bite deeper, and each hit in a combo rings the next
+  // bell of the mine tune, climbing the scale
+  hit: (crit, chainLength) => {
+    pickaxe(0.8 + crit * 0.12);
+    if (chainLength >= 3) metal(mineNote(Math.min(chainLength - 3, 14), 1), 0.35, { vol: 0.03, wet: 0.3 });
+    if (crit >= 3) metal(mineNote(4 + crit, 1), 0.5, { vol: 0.03 + crit * 0.005, wet: 0.4 });
     if (crit >= 5) kick(0);
   },
-  miss: () => sfx(380, 0.06, { type: "sine", vol: 0.02, to: 220 }),
+  // Pick whooshing through empty air
+  miss: () => noise(0.08, { vol: 0.03, hp: 900 }),
+  // The rock gives way: a heavy thud and gravel pouring
   crumble: () => {
-    noise(0.4, { vol: 0.28, lp: 900 });
-    noise(0.15, { vol: 0.12, hp: 3000, delay: 0.05 });
-    sfx(140, 0.35, { type: "triangle", vol: 0.15, to: 45 });
+    noise(0.45, { vol: 0.28, lp: 700 });
+    sfx(110, 0.35, { type: "triangle", vol: 0.15, to: 40 });
+    for (let i = 0; i < 7; i++) noise(0.03, { vol: 0.06, delay: 0.08 + i * between(0.03, 0.07), hp: 1600 });
   },
-  // One drop sound per rarity, getting grander
+  // Finds ring out on bells, longer phrases for rarer finds
   drop: (r) => {
-    if (r === 0) sfx(700, 0.15, { type: "sine", to: 300, vol: 0.06 });
-    else if (r === 1) arp([523, 784], 0.07, { type: "triangle", vol: 0.06 });
-    else if (r === 2) arp([523, 659, 988], 0.07, { type: "triangle", vol: 0.07, wet: 0.2 });
+    if (r === 0) metal(mineNote(2), 0.5, { vol: 0.04 });
+    else if (r === 1) bellPhrase([5, 7], 0.09, { vol: 0.05 });
+    else if (r === 2) bellPhrase([5, 7, 9, 10], 0.08, { vol: 0.05 });
+    // Epic: a falling line, wrong somehow, with voices underneath
     else if (r === 3) {
-      arp([523, 659, 784, 1047, 1319], 0.06, { vol: 0.05, wet: 0.3 });
-      ding(0.07, 0.3);
-    } else victory(6);
+      bellPhrase([12, 11, 9, 8, 5], 0.11, { vol: 0.05, dur: 1.2 });
+      choir(mineNote(0, -1), [0, 1, 7], 2.4, 0.2);
+    } else {
+      // Legendary: the deep bell tolls three times, then the whole scale cascades up
+      for (let i = 0; i < 3; i++) metal(mineNote(0, -1), 2.2, { vol: 0.12, delay: i * 0.45, wet: 0.7 });
+      bellPhrase([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 0.06, { octave: 1, vol: 0.04, delay: 1.35 });
+      choir(mineNote(0, -1), [0, 3, 7, 10], 3.5, 0.3);
+      boom(1.35);
+    }
+  },
+  // The lamp dies right before a legendary: a long breath in
+  preLegendary: () => {
+    noise(0.6, { vol: 0.12, hp: 600, attack: 0.55, wet: 0.5 });
+    sfx(mineNote(0, -2), 0.7, { type: "sine", vol: 0.1, to: mineNote(0, -3) });
   },
   coin: () => {
-    sfx(988, 0.08, { vol: 0.04 });
-    sfx(1319, 0.25, { vol: 0.04, delay: 0.07 });
+    metal(2637, 0.15, { vol: 0.03, wet: 0.2 });
+    metal(3136, 0.25, { vol: 0.03, delay: 0.07, wet: 0.2 });
   },
-  combo: () => arp([523, 659, 784, 1047, 1319], 0.06),
-  pop: () => sfx(400, 0.12, { to: 1200, vol: 0.05 }),
-  blub: () => sfx(700, 0.15, { type: "sine", to: 180, vol: 0.07 }),
-  sad: () => arp([392, 330, 262], 0.15, { type: "triangle", vol: 0.06 }),
-  trophy: () => arp([659, 784, 988, 1319], 0.08, { type: "triangle", vol: 0.06, wet: 0.4 }),
-  deny: () => sfx(140, 0.18, { type: "square", vol: 0.04, to: 90 }),
+  coinTick: (i) => metal(2400 + (i % 6) * 160, 0.08, { vol: 0.015, wet: 0.2 }),
+  // Starting a run: the cage gate rattles open and the bell rings once
+  combo: () => {
+    chain(6);
+    metal(mineNote(5), 0.8, { vol: 0.05, delay: 0.15 });
+  },
+  comboUp: (n) => bellPhrase([0, 2, 4, 5].map((d) => d + Math.min(Math.floor(n / 10), 6)), 0.06, { octave: 1, vol: 0.04 }),
+  comboBreak: () => {
+    metal(mineNote(1, -1), 0.6, { vol: 0.05, wet: 0.5 });
+    noise(0.2, { vol: 0.05, lp: 400 });
+  },
+  geode: () => {
+    bellPhrase([10, 11, 12, 13, 14], 0.05, { vol: 0.035 });
+    ding(0.05, 0.3);
+  },
+  pop: () => metal(mineNote(7, 1), 0.2, { vol: 0.03, wet: 0.1 }),
+  blub: () => sfx(700, 0.15, { type: "sine", to: 180, vol: 0.07, wet: 0.6 }),
+  // The lamp goes out: the work song, slowed and falling
+  sad: () => bellPhrase([3, 2, 0, -1], 0.28, { vol: 0.05, dur: 1.4 }),
+  trophy: () => bellPhrase([4, 5, 7, 9], 0.08, { vol: 0.04 }),
+  deny: () => metal(mineNote(1, -1), 0.3, { vol: 0.04, bright: 0.3 }),
 };
 
 muteBtn.addEventListener("click", () => {
@@ -463,6 +538,7 @@ muteBtn.addEventListener("click", () => {
   save("minele-sound-off", muted ? 1 : 0);
   muteBtn.classList.toggle("off", muted);
   SOUND.pop();
+  ambience.start();
 });
 
 /* ---------- The rock ---------- */
@@ -479,7 +555,7 @@ rockCanvas.height = ROCK_GRID;
 let rock = null;
 
 // Specks in the stone hint at how lucky the rock is
-const SPECK_COLORS = ["#b8aac8", "#b8aac8", "#b8aac8", "#40d959", "#40d959", "#408cff", "#408cff", "#a64df2", "#a64df2", "#ffcf4a"];
+const SPECK_COLORS = ["#b0a090", "#b0a090", "#b0a090", "#40d959", "#40d959", "#408cff", "#408cff", "#a64df2", "#a64df2", "#ffcf4a"];
 
 function makeRock() {
   // RogueMiner: three nested rolls make most rocks soft and a few very hard
@@ -491,7 +567,8 @@ function makeRock() {
   const worldLevel = stat("worldLevel");
   const difficulty = 1 + (rockLevel - 1) * 0.08 + (worldLevel - 1) * 0.15;
   const hardness = Math.max(1, Math.round(luck * difficulty));
-  const hp = 100 * difficulty;
+  const geode = Math.random() < GEODE_CHANCE;
+  const hp = 100 * difficulty * (geode ? 2 : 1);
 
   // Higher insight unlocks wilder ways to wiggle, from calm to frantic
   const unlocked = Math.min(PATTERNS.length, Math.max(1, Math.ceil(PATTERNS.length * clamp01(rockLevel / 100))));
@@ -499,9 +576,10 @@ function makeRock() {
   // A lumpy outline: a circle bent by three random harmonics
   const harmonics = [2, 3, 5].map((k) => ({ k, amp: between(0.04, 0.12), ph: between(0, Math.PI * 2) }));
   const specks = [];
-  const speckCount = 4 + rarity * 2;
+  const speckCount = geode ? 46 : 4 + rarity * 2;
   for (let i = 0; i < speckCount; i++) {
-    specks.push({ x: range(10, 40), y: range(10, 40), size: Math.random() < 0.3 ? 2 : 1, color: SPECK_COLORS[Math.min(9, range(0, rarity))] });
+    const color = geode ? pick(RARITY_COLORS.slice(1)) : SPECK_COLORS[Math.min(9, range(0, rarity))];
+    specks.push({ x: range(10, 40), y: range(10, 40), size: Math.random() < (geode ? 0.5 : 0.3) ? 2 : 1, color });
   }
   // Cracks: random walks from the middle, revealed as the rock loses health
   const cracks = [];
@@ -524,8 +602,9 @@ function makeRock() {
     hp,
     maxHp: hp,
     hardness,
-    rarity,
+    rarity: geode ? 10 : rarity,
     luck,
+    geode,
     pattern: range(0, unlocked),
     phase: between(0, Math.PI * 2),
     harmonics,
@@ -553,10 +632,10 @@ function drawRock() {
   rctx.clearRect(0, 0, ROCK_GRID, ROCK_GRID);
   if (!rock) return;
   const r = rock;
-  const dark = [22, 14, 30];
-  const base = [122, 106, 140];
-  const light = [184, 170, 200];
-  const shadow = [70, 56, 88];
+  const dark = [14, 10, 8];
+  const base = [112, 96, 80];
+  const light = [170, 152, 130];
+  const shadow = [62, 50, 40];
   const body = mix(dark, base, r.shade);
   const hi = mix(dark, light, r.shade);
   const lo = mix(dark, shadow, r.shade);
@@ -569,7 +648,7 @@ function drawRock() {
       rctx.fillStyle = upLeft ? hi : downRight ? lo : body;
       rctx.fillRect(x, y, 1, 1);
       if (!insideRock(r, x - 1, y) || !insideRock(r, x + 1, y) || !insideRock(r, x, y - 1) || !insideRock(r, x, y + 1)) {
-        rctx.fillStyle = "#160828";
+        rctx.fillStyle = "#080504";
         rctx.fillRect(x, y, 1, 1);
       }
     }
@@ -581,7 +660,7 @@ function drawRock() {
   }
   // Cracks grow as health drops
   const damage = 1 - Math.max(0, r.hp) / r.maxHp;
-  rctx.fillStyle = "#0b0518";
+  rctx.fillStyle = "#050302";
   r.cracks.forEach((path, ci) => {
     const shown = Math.floor(path.length * clamp01(damage * 1.6 - ci * 0.12));
     for (let i = 0; i < shown; i++) {
@@ -614,9 +693,12 @@ measurePit();
 window.addEventListener("resize", measurePit);
 
 let lastFrame = performance.now();
+let frameCount = 0;
 let knock = 0;
+// Hit-stop: big moments freeze the rock for a beat
+let freezeUntil = 0;
 function frame(now) {
-  const dt = Math.min(0.05, (now - lastFrame) / 1000);
+  const dt = now < freezeUntil ? 0 : Math.min(0.05, (now - lastFrame) / 1000);
   lastFrame = now;
   if (rock) {
     // Slow motion calms every rock; a harder rock also wiggles slower (easier to hit)
@@ -631,6 +713,7 @@ function frame(now) {
     const jitter = knock > 0.5 ? (Math.random() - 0.5) * knock : 0;
     rockCanvas.style.transform = `translate(${rock.x - half + jitter}px, ${rock.y - half + jitter}px)`;
   }
+  if (frameCount++ % 4 === 0) lookAt();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -681,6 +764,7 @@ function swing() {
   const dist = Math.hypot(pointer.x - rock.x, pointer.y - rock.y);
   if (dist > HIT_RADIUS) {
     SOUND.miss();
+    breakCombo();
     const now = performance.now();
     if (now - lastMissFloat > 400) {
       lastMissFloat = now;
@@ -691,28 +775,178 @@ function swing() {
   hit();
 }
 
+/* ---------- Combo ---------- */
+
+const comboEl = $("combo");
+let combo = 0;
+let lastHitAt = 0;
+let comboFade = null;
+const comboMult = () => 1 + Math.min(combo, COMBO_CAP) * COMBO_STEP;
+
+function breakCombo() {
+  if (combo >= 10) {
+    SOUND.comboBreak();
+    floatText(pointer ? pointer.cx : innerWidth / 2, pointer ? pointer.cy - 40 : innerHeight / 2, `COMBO LOST x${combo}`, "miss");
+  }
+  combo = 0;
+  renderCombo();
+}
+
+function renderCombo() {
+  clearTimeout(comboFade);
+  if (combo < 3) {
+    comboEl.classList.remove("on");
+    return;
+  }
+  // The counter heats up through the rarity colors as the combo grows
+  const heat = Math.min(4, Math.floor(combo / 10));
+  comboEl.style.setProperty("--rc", RARITY_COLORS[heat]);
+  comboEl.innerHTML = `${RARITY_SYMBOLS[heat]} x${combo}<small>${comboMult().toFixed(2)}x DMG</small>`;
+  comboEl.classList.add("on");
+  comboEl.animate([{ transform: "scale(1.4)" }, { transform: "scale(1)" }], { duration: 160, easing: "steps(3)" });
+  comboFade = setTimeout(() => {
+    combo = 0;
+    comboEl.classList.remove("on");
+  }, COMBO_WINDOW_MS);
+}
+
+function shake(el, power, duration = 260) {
+  if (reducedMotion) return;
+  const frames = [];
+  for (let i = 0; i < 6; i++) frames.push({ transform: `translate(${between(-power, power)}px, ${between(-power, power)}px)` });
+  frames.push({ transform: "none" });
+  el.animate(frames, { duration, easing: "steps(6)" });
+}
+
 function hit() {
   // RogueMiner: damage from strength and pickaxe against hardness, agility steadies it,
-  // and three nested rolls pick a crit level (0 = a weak 0.4x swing, 8 = a 3.6x smash)
+  // and three nested rolls pick a crit level (0 = a weak swing, 8 = a huge smash)
+  const now = performance.now();
+  if (now - lastHitAt > COMBO_WINDOW_MS) combo = 0;
+  lastHitAt = now;
+  combo++;
   const base = (stat("strength") * 10 + stat("pickaxe") * 100) / rock.hardness;
   const variance = between(0.9, 1.1) + stat("agility") * 0.01;
   const c1 = range(1, 10);
   const c2 = range(1, c1);
   const c3 = range(1, c2);
   const crit = range(0, c3);
-  const damage = base * variance * ((crit + 1) / 2.5);
+  const damage = base * variance * ((crit + 1.5) / 2.5) * comboMult() * DAMAGE_BOOST;
 
   rock.hp -= damage;
   run.hits++;
   run.bestHit = Math.max(run.bestHit, damage);
+  run.bestCombo = Math.max(run.bestCombo || 0, combo);
   knock = 4 + crit * 3;
-  SOUND.hit(crit);
+  SOUND.hit(crit, combo);
   floatText(pointer.cx, pointer.cy - 20, fmt(Math.max(1, damage)), `c${crit}`);
-  burst(pointer.cx, pointer.cy, 3 + crit * 2, ["#7a6a8c", "#b8aac8", "#4d405c", ...(crit >= 4 ? ["#ffcf4a"] : [])], 0.6);
-  if (crit >= 5) showToast(crit >= 7 ? "MEGA CRIT!" : "CRIT!", 4 + crit / 2);
+  burst(pointer.cx, pointer.cy, 3 + crit * 2, ["#706050", "#aa9882", "#3e3228", ...(crit >= 4 ? ["#ffcf4a"] : [])], 0.6);
+  if (crit >= 4) shake(document.querySelector(".table"), 2 + crit);
+  if (crit >= 5) {
+    freezeUntil = now + 90;
+    showToast(crit >= 7 ? "MEGA CRIT!" : "CRIT!", 4 + crit / 2);
+  }
+  if (combo % 10 === 0) {
+    SOUND.comboUp(combo);
+    showToast(`${RARITY_SYMBOLS[Math.min(4, combo / 10 - 1)]} COMBO x${combo} ${RARITY_SYMBOLS[Math.min(4, combo / 10 - 1)]}`, Math.min(9, 3 + combo / 10));
+  }
+  renderCombo();
   drawRock();
   renderHp();
   if (rock.hp <= 0) breakRock();
+}
+
+/* ---------- Rarity effects: the rarer, the crazier ---------- */
+
+function fxEl(cls, x, y, rarity, life) {
+  const el = document.createElement("div");
+  el.className = `${cls} r${rarity}`;
+  el.style.left = `${x}px`;
+  el.style.top = `${y}px`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), life);
+  return el;
+}
+
+// Symbols flung out from a point (or raining over the whole screen for legendaries)
+function symbolBurst(x, y, rarity, count, rain = false) {
+  if (reducedMotion) count = Math.ceil(count / 4);
+  for (let i = 0; i < count; i++) {
+    const el = fxEl("sym", rain ? between(0, innerWidth) : x, rain ? -40 : y, rarity, 3200);
+    el.textContent = RARITY_SYMBOLS[rarity];
+    el.style.fontSize = `${Math.round(between(14, rain ? 40 : 28))}px`;
+    const a = between(0, Math.PI * 2);
+    const d = between(60, 200);
+    const to = rain
+      ? `translate(${between(-60, 60)}px, ${innerHeight + 80}px) rotate(${between(-360, 360)}deg)`
+      : `translate(${Math.cos(a) * d}px, ${Math.sin(a) * d}px) rotate(${between(-180, 180)}deg)`;
+    el.animate([{ transform: "translate(0, 0) scale(.3)", opacity: 1 }, { transform: to, opacity: 0 }], {
+      duration: rain ? between(1800, 3000) : between(700, 1200),
+      delay: rain ? between(0, 900) : 0,
+      easing: rain ? "linear" : "cubic-bezier(.2, .8, .4, 1)",
+      fill: "both",
+    });
+  }
+}
+
+async function rarityFX(item, x, y) {
+  const r = item.rarity;
+  const sym = RARITY_SYMBOLS[r];
+  if (r === 4) {
+    // Legendary: everything stops, the lamp dies, then the find erupts in gold
+    freezeUntil = performance.now() + 900;
+    const dark = fxEl("blackout", x, y, r, 1100);
+    dark.style.setProperty("--bx", `${x}px`);
+    dark.style.setProperty("--by", `${y}px`);
+    SOUND.preLegendary();
+    await wait(650);
+  }
+  floatText(x, y - 70, `${sym} ${item.name} ${sym}`, `loot r${r}`);
+  SOUND.drop(r);
+  if (r === 0) burst(x, y, 8, ["#c7c7c7", "#8a7660"], 0.5);
+  if (r >= 1) fxEl("shock", x, y, r, 900).style.setProperty("--ss", 4 + r * 3);
+  if (r === 1) burst(x, y, 16, ["#40d959", "#8ac25a"], 0.7);
+  if (r >= 2) {
+    fxEl("beam", x, y, r, 1600).style.setProperty("--bw", `${16 + r * 14}px`);
+    symbolBurst(x, y, r, 4 + r * 4);
+  }
+  if (r >= 3) {
+    fxEl("rarity-flash", 0, 0, r, 800);
+    setTimeout(() => fxEl("shock", x, y, r, 900).style.setProperty("--ss", 18), 160);
+    showToast(`${sym} ${RARITY_NAMES[r]} ${sym}\n${item.name.toUpperCase()}`, r === 4 ? 9 : 7, true);
+    sparkles(x, y, r === 4 ? 60 : 30);
+    lurch(r === 4);
+    setMessage(r === 4 ? "> it glows. everything down here saw it" : "> it glitters. the eyes noticed too", "eerie");
+  }
+  if (r === 4) {
+    fxEl("rays", x, y, r, 2600);
+    setTimeout(() => fxEl("shock", x, y, r, 900).style.setProperty("--ss", 30), 320);
+    symbolBurst(x, y, r, 40, true);
+    shake(stageEl, 10, 600);
+  }
+}
+
+// Coins fly from the rock into the gold counter, one tick each
+async function coinsTo(x, y, amount) {
+  const target = centerOf($("gold"));
+  const flying = Math.min(12, amount);
+  for (let i = 0; i < flying; i++) {
+    const el = fxEl("coin-fly", x, y, 4, 1200);
+    const mid = { x: x + between(-80, 80), y: y - between(40, 120) };
+    el.animate(
+      [
+        { transform: "translate(-50%, -50%)" },
+        { transform: `translate(calc(-50% + ${mid.x - x}px), calc(-50% + ${mid.y - y}px))`, offset: 0.35 },
+        { transform: `translate(calc(-50% + ${target.x - x}px), calc(-50% + ${target.y - y}px)) scale(.6)` },
+      ],
+      { duration: 700, delay: i * 45, easing: "ease-in", fill: "both" }
+    );
+    setTimeout(() => SOUND.coinTick(i), 700 + i * 45);
+  }
+  await wait(700 + flying * 45);
+  addGold(amount);
+  bump(goldEl);
+  persist();
 }
 
 async function breakRock() {
@@ -721,29 +955,33 @@ async function breakRock() {
   const r = rock;
   const at = rockCenter();
   SOUND.crumble();
-  burst(at.x, at.y, 40, ["#7a6a8c", "#b8aac8", "#4d405c", "#160828", RARITY_COLORS[Math.min(4, Math.floor(r.rarity / 2.5))]]);
+  burst(at.x, at.y, 40, ["#706050", "#aa9882", "#3e3228", "#080504", RARITY_COLORS[Math.min(4, Math.floor(r.rarity / 2.5))]]);
   rockCanvas.animate([{ opacity: 1, filter: "brightness(2)" }, { opacity: 0, filter: "brightness(1)" }], { duration: 250, fill: "forwards" });
 
   // Score: RogueMiner's 80 per rock, raised by dimension, luck and player power
   const worldMult = 1 + (stat("worldLevel") - 1) * 0.2;
   const luckMult = 1 + stat("luck") * 0.01;
   const gain = Math.round(80 * worldMult * luckMult * (stat("power") / 100) * between(0.75, 1.25));
-  addScore(gain);
-  floatText(at.x, at.y - 30, `+${fmt(gain)}`, "gold");
+  addScore(gain * (r.geode ? 3 : 1));
+  floatText(at.x, at.y - 30, `+${fmt(gain * (r.geode ? 3 : 1))}`, "gold");
   run.rocks--;
   run.mined++;
   state.stats.minedStones++;
 
-  const item = rollLoot(r);
-  addItem(item.id);
-  run.finds[item.id] = (run.finds[item.id] || 0) + 1;
-  await wait(180);
-  floatText(at.x, at.y - 70, `${RARITY_NAMES[item.rarity]}: ${item.name}`, `loot r${item.rarity}`);
-  SOUND.drop(item.rarity);
-  if (item.rarity >= 3) {
-    showToast(`${RARITY_NAMES[item.rarity]}!\n${item.name.toUpperCase()}`, item.rarity === 4 ? 9 : 7, true);
-    sparkles(at.x, at.y, item.rarity === 4 ? 60 : 30);
-    if (item.rarity === 4) celebrate();
+  // Gold straight from the rock: more from luckier rocks and deeper levels, a pile from geodes
+  const gold = Math.max(1, Math.round((1 + r.rarity * 0.4) * (1 + (run.level - 1) * 0.15) * between(0.8, 1.2) * (r.geode ? 6 : 1)));
+  coinsTo(at.x, at.y, gold);
+
+  // A geode holds three finds, rolled with extra luck; a plain rock one
+  const drops = r.geode ? 3 : 1;
+  for (let d = 0; d < drops; d++) {
+    const item = rollLoot(r, r.geode ? 0.35 : 0);
+    const [lo, hi] = STACK_SIZES[item.rarity];
+    const n = range(lo, hi + 1);
+    addItem(item.id, n);
+    run.finds[item.id] = (run.finds[item.id] || 0) + n;
+    await wait(d ? 420 : 180);
+    await rarityFX(n > 1 ? { ...item, name: `${item.name} x${n}` } : item, at.x + (d - (drops - 1) / 2) * 60, at.y);
   }
   renderRun();
   checkAchievements();
@@ -765,8 +1003,8 @@ function rockCenter() {
 
 // RogueMiner's loot table: every rarity always has a chance, and luck (the rock's, its
 // rarity, insight and the player's) slides all of them toward an even 20% each
-function rollLoot(r) {
-  const progress = clamp01((r.luck / 50 + r.rarity / 10 + stat("rockLevel") / 100 + stat("luck") / 1601) / 4);
+function rollLoot(r, boost = 0) {
+  const progress = clamp01((r.luck / 50 + r.rarity / 10 + stat("rockLevel") / 100 + stat("luck") / 1601) / 4 + boost);
   const chances = [
     [4, lerp(0.001, 0.2, progress)],
     [3, lerp(0.01, 0.2, progress)],
@@ -802,7 +1040,16 @@ function spawnRock() {
   // Scale, not transform: the transform is the rock's position, set every frame
   rockCanvas.animate([{ scale: "0.2", opacity: 0 }, { scale: "1", opacity: 1 }], { duration: 200, easing: "steps(4)" });
   hardnessEl.textContent = rock.hardness;
-  rarityEl.textContent = `${rock.rarity}/10`;
+  // Lucky rocks glow in the color of the finds they're likely to hold
+  const glow = rock.geode ? 4 : rock.rarity >= 10 ? 4 : rock.rarity >= 9 ? 3 : rock.rarity >= 7 ? 2 : -1;
+  rarityEl.textContent = rock.geode ? "✸ GEODE ✸" : `${rock.rarity}/10${glow >= 0 ? " " + RARITY_SYMBOLS[glow] : ""}`;
+  rockCanvas.style.setProperty("--aura", glow >= 0 ? RARITY_COLORS[glow] : "transparent");
+  rockCanvas.classList.toggle("geode", rock.geode);
+  if (rock.geode) {
+    SOUND.geode();
+    showToast("✸ GEODE ✸\nCRACK IT OPEN", 8);
+    setTimeout(() => sparkles(rockCenter().x, rockCenter().y, 30), 120);
+  }
   renderHp();
   phase = "mining";
   updateHint();
@@ -814,39 +1061,103 @@ async function levelUp() {
   run.rocks = rocksForLevel(run.level);
   run.goal = goalFor(run.level);
   if (run.level > state.stats.levelHigh) state.stats.levelHigh = run.level;
-  setDepth(run.level);
-  cartRumble(1.2);
-  ding(0.08, 1.1);
   const tier = tierFor(run.level);
-  const banner = document.createElement("div");
-  banner.className = "panel level-banner";
-  banner.innerHTML = `<small>&#9660; DEEPER &#9660;</small><b>LEVEL ${run.level}</b><span>${run.rocks} rocks &middot; goal ${fmt(run.goal)}</span>`;
-  document.body.appendChild(banner);
-  setTimeout(() => banner.remove(), 2300);
-  if (tierFor(run.level - 1) < tier) {
-    setTimeout(() => {
-      showToast(`${TIERS[tier].name} DEPTHS`, tier, true);
-      victory(tier);
-      celebrate();
-    }, 900);
-  }
-  setMessage(`> level ${run.level}. the air gets thinner...`, true);
   renderRun();
+  persist();
+  await descend(run.level);
+  setDepth(run.level);
+  if (tierFor(run.level - 1) < tier) {
+    showToast(`${TIERS[tier].name} DEPTHS`, tier, true);
+    victory(tier);
+  }
+  setMessage(pick(LEVEL_LINES[depthBand(run.level)]), "eerie");
   checkAchievements();
   persist();
-  await wait(1200);
+  await wait(400);
+}
+
+const LEVEL_LINES = [
+  ["> the cage creaks. deeper", "> the air smells of wet stone", "> your lamp hisses softly"],
+  ["> something shifted in the walls", "> you hear digging. not yours", "> the dark down here is thicker"],
+  ["> they are closer now", "> the dark is breathing", "> no one has come back from here"],
+];
+
+// The cage ride down: gates slam shut, the shaft rushes past, the depth counter falls
+async function descend(level) {
+  const from = (level - 1) * METERS_PER_LEVEL;
+  const to = level * METERS_PER_LEVEL;
+  const cage = document.createElement("div");
+  cage.className = "cage";
+  cage.style.setProperty("--level-color", TIERS[tierFor(level)].color);
+  cage.innerHTML = `<div class="cage-shaft"></div><div class="cage-gate left"></div><div class="cage-gate right"></div>
+    <div class="panel cage-sign"><small>&#9660; GOING DOWN &#9660;</small><b>-${fmt(from)} M</b>
+    <span>LEVEL ${level} &middot; ${run.rocks} rocks &middot; goal ${fmt(run.goal)}</span></div>`;
+  document.body.appendChild(cage);
+  const [left, right] = cage.querySelectorAll(".cage-gate");
+  const counter = cage.querySelector("b");
+  const ride = reducedMotion ? 500 : 1700;
+  cage.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, fill: "forwards" });
+  left.animate([{ transform: "translateX(-100%)" }, { transform: "none" }], { duration: 350, easing: "steps(5)", fill: "forwards" });
+  right.animate([{ transform: "translateX(100%)" }, { transform: "none" }], { duration: 350, easing: "steps(5)", fill: "forwards" });
+  noise(0.12, { vol: 0.2, lp: 1200, delay: 0.33 });
+  metal(mineNote(0, -1), 0.5, { vol: 0.08, delay: 0.33, bright: 1.5 });
+  chain(8, 0.1);
+  cartRumble(ride / 1000 + 0.3);
+  const startAt = performance.now();
+  await new Promise((resolve) => {
+    function tick(now) {
+      const t = Math.min(1, (now - startAt) / ride);
+      counter.textContent = `-${fmt(from + (to - from) * t * t)} M`;
+      if (t < 1) requestAnimationFrame(tick);
+      else resolve();
+    }
+    requestAnimationFrame(tick);
+    // Background tabs pause animation frames: never let the ride stall the game
+    setTimeout(resolve, ride + 300);
+  });
+  counter.textContent = `-${fmt(to)} M`;
+  // Clunk: the cage hits the next landing
+  boom(0);
+  ding(0.06);
+  left.animate([{ transform: "none" }, { transform: "translateX(-100%)" }], { duration: 350, easing: "steps(5)", fill: "forwards" });
+  right.animate([{ transform: "none" }, { transform: "translateX(100%)" }], { duration: 350, easing: "steps(5)", fill: "forwards" });
+  cage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 450, delay: 250, fill: "forwards" });
+  await wait(720);
+  cage.remove();
+}
+
+// A rare find: the floor drops a little, the lamp gutters, every eye turns your way
+function lurch(legendary) {
+  stageEl.classList.remove("lurch");
+  void stageEl.offsetWidth;
+  stageEl.classList.add("lurch");
+  pulseDark();
+  startle(legendary ? 3200 : 1600);
+  if (legendary) surgeEyes(14);
+}
+
+function pulseDark() {
+  darknessEl.classList.remove("pulse");
+  void darknessEl.offsetWidth;
+  darknessEl.classList.add("pulse");
 }
 
 function setDepth(level) {
   const root = document.documentElement;
+  const dark = darkFor(level);
   root.style.setProperty("--depth", `${(level - 1) * 120}px`);
+  root.style.setProperty("--dark", dark.toFixed(3));
   root.style.setProperty("--level-color", TIERS[tierFor(level)].color);
-  depthLabelEl.textContent = level;
-  rockDepthEl.textContent = `LV ${level}`;
+  depthLabelEl.textContent = depthText(level);
+  rockDepthEl.textContent = depthText(level);
   paintTier(levelEl, tierFor(level));
+  pitch = Math.pow(2, -Math.min((level - 1) * 0.5, 12) / 12);
+  echo = dark * 0.35;
+  syncEyes(level);
+  ambience.update();
   if (level > topLevel) {
     topLevel = level;
-    topLevelEl.textContent = topLevel;
+    topLevelEl.textContent = depthText(topLevel);
     bump(topLevelEl);
   }
 }
@@ -868,7 +1179,8 @@ function startRun() {
   setDepth(1);
   renderRun();
   setButton("mining");
-  setMessage("> swing away!");
+  setMessage("> the cage creaks open. start digging");
+  ambience.start();
   SOUND.combo();
   checkAchievements();
   persist();
@@ -880,7 +1192,7 @@ function resumeRun() {
   setDepth(run.level);
   renderRun();
   setButton("mining");
-  setMessage("> back in the mine. your rocks waited for you");
+  setMessage("> you're still down here. they remember you", "eerie");
   spawnRock();
 }
 
@@ -896,7 +1208,8 @@ async function gameOver() {
   hpText.textContent = "OUT OF ROCKS";
   hpFill.style.width = "0";
   SOUND.sad();
-  setMessage("> out of rocks. the cart heads back up");
+  setMessage("> your lamp sputters out...", "eerie");
+  pulseDark();
   await wait(900);
 
   const final = run;
@@ -921,7 +1234,7 @@ async function gameOver() {
     .filter(([item]) => item)
     .sort((a, b) => b[0].rarity - a[0].rarity || b[1] - a[1]);
   $("go-finds").innerHTML = finds.length
-    ? finds.map(([item, n]) => `<span class="chip r${item.rarity}">${item.name}${n > 1 ? ` <b>x${n}</b>` : ""}</span>`).join("")
+    ? finds.map(([item, n]) => `<span class="chip r${item.rarity}">${RARITY_SYMBOLS[item.rarity]} ${item.name}${n > 1 ? ` <b>x${n}</b>` : ""}</span>`).join("")
     : `<span class="lb-empty">nothing. not even a pebble</span>`;
   $("go-entry").hidden = true;
 
@@ -992,7 +1305,7 @@ function offerLeaderboard(final, tier) {
   $("go-entry-actions").hidden = false;
   $("go-edit-row").hidden = true;
   entry.animate([{ transform: "scale(.6)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 300, easing: "cubic-bezier(.3, 1.6, .5, 1)" });
-  arp([523, 659, 784, 1047], 0.08, { type: "triangle", vol: 0.05 });
+  bellPhrase([5, 7, 9, 10], 0.08, { vol: 0.045 });
 }
 
 $("go-initials").addEventListener("input", (e) => {
@@ -1079,14 +1392,14 @@ function renderBag() {
   $("bag-tabs").innerHTML = RARITY_GROUPS.map((g, r) => {
     const group = ITEMS.filter((i) => i.rarity === r);
     const found = group.filter((i) => everFound(i.id) > 0).length;
-    return `<button type="button" class="tab r${r} ${r === bagTab ? "on" : ""}" data-tab="${r}">${g} ${found}/${group.length}</button>`;
+    return `<button type="button" class="tab r${r} ${r === bagTab ? "on" : ""}" data-tab="${r}">${RARITY_SYMBOLS[r]} ${g} ${found}/${group.length}</button>`;
   }).join("");
   $("bag-grid").innerHTML = ITEMS.filter((i) => i.rarity === bagTab)
     .map((i) => {
       const known = everFound(i.id) > 0;
       const cls = `item r${i.rarity}${known ? "" : " unknown"}${known && !available(i.id) ? " empty" : ""}${bagSelected === i.id ? " sel" : ""}`;
       return `<button type="button" class="${cls}" data-id="${i.id}" ${known ? "" : "disabled"}>
-        <span class="gem"></span>${known ? i.name : "???"}<span class="qty">${known ? "x" + available(i.id) : ""}</span></button>`;
+        <span class="gem">${known ? RARITY_SYMBOLS[i.rarity] : "?"}</span>${known ? i.name : "???"}<span class="qty">${known ? "x" + available(i.id) : ""}</span></button>`;
     })
     .join("");
   renderDetail();
@@ -1103,7 +1416,7 @@ function renderDetail() {
   const wanted = neededBy(item.id);
   box.hidden = false;
   box.className = `detail r${item.rarity}`;
-  box.innerHTML = `<h4>${item.name} &middot; ${RARITY_NAMES[item.rarity]}</h4>
+  box.innerHTML = `<h4>${RARITY_SYMBOLS[item.rarity]} ${item.name} &middot; ${RARITY_NAMES[item.rarity]}</h4>
     <p>${item.desc}</p>
     <p>In the bag <b>${have}</b> &middot; ever found <b>${everFound(item.id)}</b> &middot; sells for <b>${item.sell}</b> gold each</p>
     ${wanted.length ? `<p>&#9888; The shop wants it for: ${wanted.map((u) => u.name).join(", ")}</p>` : ""}
@@ -1125,7 +1438,7 @@ $("bag-grid").addEventListener("click", (e) => {
   const el = e.target.closest("[data-id]");
   if (!el || el.disabled) return;
   bagSelected = el.dataset.id;
-  sfx(600, 0.05, { vol: 0.03 });
+  SOUND.pop();
   renderBag();
 });
 $("bag-detail").addEventListener("click", (e) => {
@@ -1171,7 +1484,7 @@ function renderShop() {
           .concat(
             cost.items.map(([id, n]) => {
               const item = ITEM_BY_ID[id];
-              return `<span class="chip r${item.rarity} ${available(id) >= n ? "" : "short"}">${item.name} <b>${available(id)}/${n}</b></span>`;
+              return `<span class="chip r${item.rarity} ${available(id) >= n ? "" : "short"}">${RARITY_SYMBOLS[item.rarity]} ${item.name} <b>${available(id)}/${n}</b></span>`;
             })
           )
           .join("")
@@ -1339,9 +1652,11 @@ function showToast(text, tier = 9, long = false) {
   toastEl.classList.add("show");
 }
 
-function setMessage(text, win = false) {
+// mode: true = good news (gold), "eerie" = something is wrong (ember)
+function setMessage(text, mode = false) {
   messageEl.textContent = text;
-  messageEl.classList.toggle("win", win);
+  messageEl.classList.toggle("win", mode === true);
+  messageEl.classList.toggle("eerie", mode === "eerie");
 }
 
 function floatText(x, y, text, cls = "") {
@@ -1359,13 +1674,13 @@ function centerOf(el) {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 }
 
-// The big button: NEW RUN when idle, a reminder while mining
+// The big button: DESCEND when idle, a reminder while mining
 function setButton(mode) {
   rollBtn.classList.toggle("mining", mode === "mining");
   rollBtn.innerHTML =
     mode === "mining"
       ? '&#9935; TAP THE ROCK &#9935;<span class="auto">hold to keep swinging</span>'
-      : "&#9660; NEW RUN &#9660;";
+      : "&#9660; DESCEND &#9660;";
 }
 
 function nudgeButton() {
@@ -1384,7 +1699,7 @@ function setHint(text) {
 
 function updateHint() {
   if (!run) {
-    setHint("Tap NEW RUN to play. New here? The ? button explains everything.");
+    setHint("Tap DESCEND to play. New here? The ? button explains everything.");
     return;
   }
   const need = run.goal - run.score;
@@ -1515,12 +1830,19 @@ keepAwake();
 
 /* ---------- Fit the whole game into 90% of the screen, no scrolling ---------- */
 
-const stageEl = $("stage");
 function fitStage() {
   const natural = stageEl.offsetHeight; // layout size, not affected by the transform
   const avail = window.innerHeight * 0.9 - stageEl.offsetTop;
   const scale = Math.min(1, avail / Math.max(natural, 1));
   stageEl.style.transform = scale < 1 ? `scale(${scale.toFixed(4)})` : "";
+  aimLamp();
+}
+
+// The lamplight centers on the cave
+function aimLamp() {
+  const r = document.querySelector(".table").getBoundingClientRect();
+  document.documentElement.style.setProperty("--lx", `${Math.round(r.left + r.width / 2)}px`);
+  document.documentElement.style.setProperty("--ly", `${Math.round(r.top + r.height * 0.55)}px`);
 }
 window.addEventListener("resize", fitStage);
 window.addEventListener("orientationchange", () => setTimeout(fitStage, 200));
@@ -1558,6 +1880,7 @@ $("splash-help").addEventListener("click", (e) => {
 });
 splashEl.addEventListener("click", () => {
   audio();
+  ambience.start();
   keepAwake();
   SOUND.combo();
   splashEl.style.pointerEvents = "none";
@@ -1629,7 +1952,7 @@ setTimeout(spawnDrifter, 1500);
 
 const canvas = $("fx");
 const ctx = canvas.getContext("2d");
-const COLORS = ["#ffcf4a", "#ff3d9a", "#44f0ff", "#d61f35", "#fff2dc", "#1f8a45"];
+const COLORS = ["#e8a840", "#ffb54a", "#c2401c", "#8a1410", "#8a7660", "#e8d6b8"];
 let particles = [];
 let animating = false;
 
@@ -1734,6 +2057,233 @@ function tick() {
   else animating = false;
 }
 
+/* ---------- Eyes in the dark ---------- */
+
+const eyesEl = $("eyes");
+const pitEyesEl = $("pit-eyes");
+// Shallow eyes are mostly amber, deeper ones turn red
+const EYE_AMBER = "#ffbf3a";
+const EYE_GREEN = "#b8ff5a";
+const EYE_RED = "#ff3b2f";
+let eyePairs = [];
+let pitPairs = [];
+let lastPointer = null;
+
+function eyeColor(dark) {
+  if (Math.random() < 0.1 + dark * 0.85) return EYE_RED;
+  return Math.random() < 0.75 ? EYE_AMBER : EYE_GREEN;
+}
+
+// One pair of eyes at a spot given as fractions of its container
+function makeEyePair(container, fx, fy, size, color) {
+  const el = document.createElement("div");
+  el.className = "eye-pair";
+  el.style.left = `${(fx * 100).toFixed(2)}%`;
+  el.style.top = `${(fy * 100).toFixed(2)}%`;
+  el.style.setProperty("--es", `${size}px`);
+  el.style.setProperty("--ec", color);
+  el.style.setProperty("--tilt", `${Math.round(between(-14, 14))}deg`);
+  el.style.setProperty("--blink", `${between(4, 11).toFixed(1)}s`);
+  el.style.setProperty("--bd", `${-between(0, 10).toFixed(1)}s`);
+  el.style.setProperty("--eo", between(0.45, 0.9).toFixed(2));
+  el.innerHTML = '<span class="eye"><span class="pupil"></span></span><span class="eye"><span class="pupil"></span></span>';
+  container.appendChild(el);
+  return { el, container, fx, fy, size };
+}
+
+function dropPair(pair) {
+  pair.el.classList.add("leaving");
+  setTimeout(() => pair.el.remove(), 900);
+}
+
+// More eyes open as you go down; a new run back at the top closes them
+function syncEyes(level) {
+  const dark = darkFor(level);
+  const want = eyesFor(level);
+  while (eyePairs.length > want) dropPair(eyePairs.pop());
+  while (eyePairs.length < want) {
+    // Mostly at the sides, out of the lamplight
+    const side = Math.random() < 0.7;
+    const fx = side ? (Math.random() < 0.5 ? between(0.02, 0.2) : between(0.8, 0.96)) : between(0.04, 0.94);
+    eyePairs.push(makeEyePair(eyesEl, fx, between(0.08, 0.95), Math.round(7 + Math.random() * 6 + dark * 8), eyeColor(dark)));
+  }
+  // From level 6 something watches from inside the cave itself
+  const wantPit = level >= 6 ? Math.min(6, Math.floor((level - 3) / 3)) : 0;
+  while (pitPairs.length > wantPit) dropPair(pitPairs.pop());
+  while (pitPairs.length < wantPit) {
+    pitPairs.push(makeEyePair(pitEyesEl, between(0.03, 0.9), between(0.05, 0.85), Math.round(8 + dark * 6), eyeColor(dark)));
+  }
+}
+
+// A burst of extra eyes that snap open for a moment, then sink back into the dark
+function surgeEyes(count) {
+  for (let i = 0; i < count; i++) {
+    const pair = makeEyePair(eyesEl, between(0.02, 0.96), between(0.05, 0.95), Math.round(between(8, 18)), EYE_RED);
+    pair.el.style.animationDuration = "0.6s";
+    setTimeout(() => dropPair(pair), 2600 + i * 60);
+  }
+}
+
+let startleTimer = null;
+function startle(ms) {
+  eyesEl.classList.add("widen");
+  pitEyesEl.classList.add("widen");
+  clearTimeout(startleTimer);
+  startleTimer = setTimeout(() => {
+    eyesEl.classList.remove("widen");
+    pitEyesEl.classList.remove("widen");
+  }, ms);
+}
+
+for (const type of ["pointermove", "pointerdown"]) {
+  window.addEventListener(type, (e) => (lastPointer = { x: e.clientX, y: e.clientY, at: performance.now() }));
+}
+
+// Every pupil turns toward you: your pointer while it moves, otherwise the rock you dig at
+function lookAt() {
+  if (!eyePairs.length && !pitPairs.length) return;
+  let target = null;
+  if (lastPointer && performance.now() - lastPointer.at < 2500) target = lastPointer;
+  else if (rock) target = rockCenter();
+  if (!target) return;
+  const pitRect = pitPairs.length ? pit.getBoundingClientRect() : null;
+  for (const pair of eyePairs.concat(pitPairs)) {
+    const x = pair.container === eyesEl ? pair.fx * innerWidth : pitRect.left + pair.fx * pitRect.width;
+    const y = pair.container === eyesEl ? pair.fy * innerHeight : pitRect.top + pair.fy * pitRect.height;
+    const dx = target.x - x;
+    const dy = target.y - y;
+    const len = Math.hypot(dx, dy) || 1;
+    const reach = pair.size * 0.4;
+    pair.el.style.setProperty("--px", `${((dx / len) * reach).toFixed(1)}px`);
+    pair.el.style.setProperty("--py", `${((dy / len) * reach * 0.3).toFixed(1)}px`);
+  }
+}
+
+/* ---------- The mine's own sounds ---------- */
+
+// A low drone and wind that darken with depth, water dripping somewhere, and in the deep
+// levels whispers, distant knocking and a heartbeat that isn't yours
+const ambience = {
+  nodes: null,
+  start() {
+    const ac = audio();
+    if (ac && !this.nodes) {
+      const out = ac.createGain();
+      out.gain.value = 0.0001;
+      out.connect(master);
+      const filter = ac.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 220;
+      filter.connect(out);
+      const drones = [41.2, 61.7, 43.6].map((f) => {
+        const osc = ac.createOscillator();
+        osc.type = "sawtooth";
+        osc.frequency.value = f;
+        osc.connect(filter);
+        osc.start();
+        return { osc, f };
+      });
+      // Wind: looping noise through a band-pass, slowly swelling and fading
+      const buffer = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      const wind = ac.createBufferSource();
+      wind.buffer = buffer;
+      wind.loop = true;
+      const band = ac.createBiquadFilter();
+      band.type = "bandpass";
+      band.frequency.value = 380;
+      band.Q.value = 0.8;
+      const windGain = ac.createGain();
+      windGain.gain.value = 0.25;
+      const lfo = ac.createOscillator();
+      lfo.frequency.value = 0.07;
+      const lfoGain = ac.createGain();
+      lfoGain.gain.value = 0.2;
+      lfo.connect(lfoGain).connect(windGain.gain);
+      wind.connect(band).connect(windGain).connect(out);
+      wind.start();
+      lfo.start();
+      this.nodes = { out, filter, drones, band };
+    }
+    this.update();
+  },
+  update() {
+    if (!this.nodes || !audioCtx) return;
+    const dark = darkFor(run ? run.level : 1);
+    const t = audioCtx.currentTime;
+    const { out, filter, drones, band } = this.nodes;
+    out.gain.setTargetAtTime(muted ? 0.0001 : 0.05 + dark * 0.12, t, 1.5);
+    filter.frequency.setTargetAtTime(240 - dark * 140, t, 2);
+    band.frequency.setTargetAtTime(380 * pitch, t, 2);
+    for (const { osc, f } of drones) osc.frequency.setTargetAtTime(f * pitch, t, 2);
+  },
+};
+
+// The mine tune: far away in the tunnels, other miners keep the work song going. Pick strokes
+// on the beat, a bell phrase every few bars. The deeper you are, the slower and darker it
+// gets, and the wrong note (the flat second, degree 1 of the scale shifted) creeps in
+const TUNNEL_PHRASES = [
+  [0, null, 2, 3, null, 2, 0, null],
+  [3, 4, 5, null, 4, 3, 2, null],
+  [5, null, 4, 3, 2, null, 0, null],
+  [2, 3, null, 2, 0, null, -1, null],
+];
+const DEEP_PHRASES = [
+  [0, null, 0.5, 0, null, -1, null, null],
+  [3, null, 2.5, 2, null, 0.5, 0, null],
+];
+let tuneBeat = 0;
+function tunnelTune() {
+  const dark = darkFor(run ? run.level : 1);
+  const beatMs = 60000 / (84 - dark * 34);
+  setTimeout(tunnelTune, beatMs);
+  if (muted || document.hidden || !ambience.nodes) return;
+  const bar = Math.floor(tuneBeat / 8);
+  const step = tuneBeat % 8;
+  tuneBeat++;
+  // Two miners trading strokes somewhere down the tunnel
+  if (step % 2 === 0) pickaxe(0.35, 0, 0.8);
+  if (step === 3 && Math.random() < 0.5) pickaxe(0.2, 0, 0.9);
+  // Every other bar the bells carry a phrase of the work song
+  if (bar % 2 === 1) {
+    const deep = dark > 0.4 && Math.random() < dark;
+    const phrases = deep ? DEEP_PHRASES : TUNNEL_PHRASES;
+    const phrase = phrases[Math.floor(bar / 2) % phrases.length];
+    const d = phrase[step];
+    if (d !== null) {
+      // Half degrees are the off notes: a semitone above the scale step
+      const f = Number.isInteger(d) ? mineNote(d) : semis(mineNote(Math.floor(d)), 1);
+      metal(f, 1.6, { vol: 0.022, wet: 0.85, bright: 0.5 });
+    }
+  }
+}
+setTimeout(tunnelTune, 2000);
+
+let heartbeat = 0;
+setInterval(() => {
+  if (muted || document.hidden || !ambience.nodes) return;
+  const dark = darkFor(run ? run.level : 1);
+  // Water dripping somewhere in the dark
+  if (Math.random() < 0.3) {
+    const f = between(1500, 2600);
+    sfx(f, 0.14, { type: "sine", vol: 0.025, to: f * 0.7, wet: 0.8 });
+  }
+  // Whispers: breathy noise swelling up and away
+  if (dark > 0.25 && Math.random() < dark * 0.12) {
+    noise(1.8, { vol: 0.02 + dark * 0.04, hp: between(1000, 1800), attack: 0.9, wet: 0.7 });
+  }
+  // Something knocking on the other side of the rock
+  if (dark > 0.5 && Math.random() < 0.04) {
+    for (let i = 0; i < 3; i++) noise(0.08, { vol: 0.12, lp: 300, delay: i * 0.32, wet: 0.5 });
+  }
+  // A slow heartbeat in the deep levels
+  if (dark > 0.45 && heartbeat++ % 2 === 0) {
+    sfx(55, 0.22, { type: "sine", vol: 0.1 * dark, to: 32 });
+    sfx(55, 0.22, { type: "sine", vol: 0.07 * dark, to: 32, delay: 0.2 });
+  }
+}, 1000);
+
 /* ---------- Start ---------- */
 
 renderGold();
@@ -1748,7 +2298,7 @@ if (run) {
   rock = makeRock();
   rock.pattern = 0;
   drawRock();
-  hpText.textContent = "tap NEW RUN";
+  hpText.textContent = "tap DESCEND";
   updateHint();
 }
 checkAchievements();
