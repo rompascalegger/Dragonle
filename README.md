@@ -1,4 +1,4 @@
-# Minele: The Bottomless Mine
+# Dragonle: The Bottomless Mine
 
 A retro pixel mining game in plain HTML, CSS and JavaScript. No build step, no dependencies.
 
@@ -27,10 +27,10 @@ Buttons: 🏆 leaderboard (this device), ? rules, ⚡ flashy animations, ♪ sou
 | `script.js` | Game rules, sound (Web Audio), effects, bag, shop, achievements |
 | `data.js` | 160 items, 8 upgrades and 104 achievements generated from RogueMiner's `Loot-DB`, `ShopDB` and `Achievement-DB`, plus 100 dinosaurs, 100 mushrooms and their 10 achievements |
 
-Saves live in `localStorage` (`minele-save`, `minele-leaderboard`).
+Saves live in `localStorage` (`dragonle-save`, `dragonle-leaderboard`).
 
 ## Run locally
 
 ```bash
-python -m http.server 8124
+python -m http.server 8126
 ```

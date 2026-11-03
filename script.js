@@ -146,7 +146,7 @@ function fmt(v) {
 
 /* ---------- Everything that is kept: finds, gold, upgrades, achievements, the current run ---------- */
 
-const SAVE_KEY = "minele-save";
+const SAVE_KEY = "dragonle-save";
 const blankSave = () => ({
   gold: 0,
   // itemId -> [available, spent]; spent finds never come back, but still count as found
@@ -258,7 +258,7 @@ setInterval(nextJoke, 7000);
 
 /* ---------- 8-bit sound ---------- */
 
-let muted = load("minele-sound-off") === 1;
+let muted = load("dragonle-sound-off") === 1;
 muteBtn.classList.toggle("off", muted);
 
 let audioCtx = null;
@@ -638,7 +638,7 @@ const SOUND = {
 // The mine's background (drone, wind, drips, whispers, the distant work tune) can be
 // silenced on its own, keeping every game sound
 const ambienceBtn = $("ambience-btn");
-let ambienceOff = load("minele-ambience-off") === 1;
+let ambienceOff = load("dragonle-ambience-off") === 1;
 function applyAmbience() {
   ambienceBtn.classList.toggle("off", ambienceOff);
   ambienceBtn.setAttribute("aria-pressed", String(!ambienceOff));
@@ -646,7 +646,7 @@ function applyAmbience() {
 applyAmbience();
 ambienceBtn.addEventListener("click", () => {
   ambienceOff = !ambienceOff;
-  save("minele-ambience-off", ambienceOff ? 1 : 0);
+  save("dragonle-ambience-off", ambienceOff ? 1 : 0);
   applyAmbience();
   ambience.start();
   SOUND.pop();
@@ -654,7 +654,7 @@ ambienceBtn.addEventListener("click", () => {
 
 muteBtn.addEventListener("click", () => {
   muted = !muted;
-  save("minele-sound-off", muted ? 1 : 0);
+  save("dragonle-sound-off", muted ? 1 : 0);
   muteBtn.classList.toggle("off", muted);
   SOUND.pop();
   ambience.start();
@@ -1383,7 +1383,7 @@ function hit(auto = false) {
 // The pickaxe swings itself, but slowly and without a combo: hand mining stays far faster
 const AUTO_SWING_MS = 400;
 const autoBtn = $("auto-btn");
-let autoMine = load("minele-automine") === 1;
+let autoMine = load("dragonle-automine") === 1;
 
 function applyAutoMine() {
   autoBtn.classList.toggle("on", autoMine);
@@ -1394,7 +1394,7 @@ function applyAutoMine() {
 
 autoBtn.addEventListener("click", () => {
   autoMine = !autoMine;
-  save("minele-automine", autoMine ? 1 : 0);
+  save("dragonle-automine", autoMine ? 1 : 0);
   applyAutoMine();
   SOUND.pop();
 });
@@ -2012,7 +2012,7 @@ gameoverEl.addEventListener("click", (e) => {
 
 /* ---------- Leaderboard ---------- */
 
-const LB_KEY = "minele-leaderboard";
+const LB_KEY = "dragonle-leaderboard";
 const LB_SIZE = 10;
 
 function loadBoard() {
@@ -2034,7 +2034,7 @@ function saveBoard(list) {
 
 function rememberedInitials() {
   try {
-    return localStorage.getItem("minele-initials") || "";
+    return localStorage.getItem("dragonle-initials") || "";
   } catch {
     return "";
   }
@@ -2069,7 +2069,7 @@ function submitInitials() {
   const entry = $("go-entry");
   const name = ($("go-initials").value || "???").padEnd(3, "?");
   try {
-    localStorage.setItem("minele-initials", name);
+    localStorage.setItem("dragonle-initials", name);
   } catch {
     // ignore
   }
@@ -2551,7 +2551,7 @@ $("version").textContent = "v" + VERSION;
 
 /* ---------- Flashy toggle ---------- */
 
-let flashy = load("minele-flashy") === 1;
+let flashy = load("dragonle-flashy") === 1;
 const flashyBtn = $("flashy");
 function applyFlashy() {
   document.documentElement.classList.toggle("flashy", flashy);
@@ -2560,7 +2560,7 @@ function applyFlashy() {
 applyFlashy();
 flashyBtn.addEventListener("click", () => {
   flashy = !flashy;
-  save("minele-flashy", flashy ? 1 : 0);
+  save("dragonle-flashy", flashy ? 1 : 0);
   applyFlashy();
   SOUND.pop();
 });
@@ -3289,7 +3289,7 @@ document.querySelector("header h1").addEventListener("click", async () => {
 
 // The old code turns your pickaxe into a rainbow; a few typed words wake things up
 const KONAMI = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
-let rainbowPick = load("minele-rainbow") === 1;
+let rainbowPick = load("dragonle-rainbow") === 1;
 let keyTrail = [];
 let typed = "";
 const SECRET_WORDS = {
@@ -3309,7 +3309,7 @@ document.addEventListener("keydown", (e) => {
   if (KONAMI.every((k, i) => keyTrail[i] === k)) {
     keyTrail = [];
     rainbowPick = !rainbowPick;
-    save("minele-rainbow", rainbowPick ? 1 : 0);
+    save("dragonle-rainbow", rainbowPick ? 1 : 0);
     showToast(rainbowPick ? "↑↑↓↓←→←→BA\nRAINBOW PICKAXE" : "RAINBOW PICKAXE\nPUT AWAY", 9, true);
     victory(4);
     unlockAch("secret_konami");

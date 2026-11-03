@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "minele",
+      "name": "dragonle",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8124"],
-      "port": 8124
+      "runtimeArgs": ["-m", "http.server", "8126"],
+      "port": 8126
     }
   ]
 }
