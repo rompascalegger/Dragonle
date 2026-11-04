@@ -4,211 +4,60 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Dragonle</title>
-  <meta name="description" content="Dragonle: a retro pixel mining game. Smash the wiggling rock, find 160 stones, gems and elements, dig into the bottomless mine.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 6h2V4h6v2h2v3h1v4H2V9h1z' fill='%237a6a8c' stroke='%23160828' stroke-width='1'/%3E%3Crect x='5' y='7' width='2' height='2' fill='%23ffcf4a'/%3E%3Crect x='9' y='9' width='2' height='2' fill='%2344f0ff'/%3E%3C/svg%3E">
+  <meta name="description" content="Dragonle: a comic-retro pixel game about dragon eggs, young dragons, twelve elements and the politics of the sky.">
+  <meta name="theme-color" content="#1b1024">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 14' shape-rendering='crispEdges'%3E%3Cpath d='M4 0h4v1h1v1h1v2h1v2h1v5h-1v2H9v1H3v-1H1v-2H0V6h1V4h1V2h1V1h1z' fill='%231b1024'/%3E%3Cpath d='M4 1h4v1h1v2h1v2h1v5h-1v1H9v1H3v-1H2v-1H1V6h1V4h1V2h1z' fill='%23ffd23f'/%3E%3Cpath d='M5 3h1v1h1v1H6v1H5z' fill='%23ff4d3d'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=VT323&family=Press+Start+2P&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=1.7.0">
+  <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Pixelify+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=3.0.1">
 </head>
 <body>
-  <div class="scanlines" aria-hidden="true"></div>
-  <div class="dust" aria-hidden="true"></div>
-  <div id="shaftwall" class="shaftwall" aria-hidden="true"></div>
-  <div id="eyes" class="eyes" aria-hidden="true"></div>
-  <div id="darkness" class="darkness" aria-hidden="true"></div>
-
-  <button id="gold" class="panel gold-badge" type="button" title="Gold: sell finds in the bag, spend it in the shop">
-    <span class="coin"><span>G</span></span>
-    <span class="gold-text">
-      <span class="label">Gold</span>
-      <span id="gold-value" class="gold-value">0</span>
-    </span>
-  </button>
-
-  <div class="top-buttons">
-    <button id="lb-btn" class="panel icon-btn" type="button" aria-label="Leaderboard" title="Leaderboard">&#127942;</button>
-    <button id="help-btn" class="panel icon-btn" type="button" aria-label="How to play" title="How to play">?</button>
-    <button id="flashy" class="panel icon-btn flashy-btn" type="button" aria-label="Toggle flashy animations" title="Flashy animations (screen flashes &amp; strobing)">&#9889;</button>
-    <button id="ambience-btn" class="panel icon-btn ambience-btn" type="button" aria-label="Toggle mine ambience" title="Mine ambience: drone, drips, whispers, distant work song">&#8779;</button>
-    <button id="mute" class="panel icon-btn mute" type="button" aria-label="Toggle sound">&#9834;</button>
-  </div>
-
-  <div id="splash" class="splash">
-    <div class="sign">
-      <h1>DRAGONLE</h1>
-      <p class="subtitle">THE BOTTOMLESS MINE</p>
+  <header class="topbar">
+    <div class="brand"><span data-icon="egg" data-scale="3"></span><span class="brand-name">DRAGONLE</span></div>
+    <div class="stats">
+      <span class="chip gold" title="Gold"><span data-icon="coin"></span><b id="gold">0</b></span>
+      <span class="chip" title="Dragon School reputation – makes riddles clearer"><span data-icon="cap"></span><b id="schoolrep">0</b></span>
+      <span class="chip ruler" id="ruler-chip" title="Ruling faction"></span>
+      <span class="chip time" title="Time played (1 year = 1 second)"><span data-icon="hourglass"></span><b id="played">0</b></span>
     </div>
-    <div class="eye-pair splash-eyes" aria-hidden="true"><span class="eye"><span class="pupil"></span></span><span class="eye"><span class="pupil"></span></span></div>
-    <button id="enter" class="roll-btn" type="button">&#9660; DESCEND &#9660;</button>
-    <button id="splash-help" class="panel splash-help" type="button">? HOW TO PLAY</button>
-    <p class="splash-hint">tap to descend &middot; sound on &middot; don't count the eyes</p>
-  </div>
-
-  <div id="gameover" class="gameover" aria-live="polite">
-    <div id="go-card" class="panel go-card">
-      <p class="go-head">YOUR LAMP GOES OUT</p>
-      <span id="go-score" class="go-score">0</span>
-      <span id="go-tier" class="go-tier">PEBBLE</span>
-      <span id="go-title" class="go-player-title"></span>
-      <div id="go-ladder" class="go-ladder"></div>
-      <div class="go-stats">
-        <span>Level <b id="go-level">1</b></span>
-        <span>Best level <b id="go-best-level">1</b></span>
-        <span>Rocks mined <b id="go-rocks">0</b></span>
-        <span>Hits <b id="go-hits">0</b></span>
-        <span>Best crit <b id="go-crit">0</b></span>
-        <span>Missed level by <b id="go-short">0</b></span>
-      </div>
-      <p class="go-section">FOUND THIS RUN</p>
-      <div id="go-finds" class="go-finds"></div>
-      <div id="go-entry" class="go-entry" hidden>
-        <p id="go-entry-title" class="go-entry-title">HIGH SCORE!</p>
-        <p class="go-entry-label">save as <b id="go-entry-name" class="go-entry-name">???</b></p>
-        <div id="go-entry-actions" class="go-entry-row">
-          <button id="go-save" class="panel go-save" type="button">SAVE</button>
-          <button id="go-edit" class="panel go-save" type="button">EDIT</button>
-          <button id="go-skip" class="panel go-save go-skip" type="button">SKIP</button>
-        </div>
-        <div id="go-edit-row" class="go-entry-row" hidden>
-          <input id="go-initials" class="go-initials" maxlength="3" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="AAA" aria-label="your initials">
-          <button id="go-edit-save" class="panel go-save" type="button">SAVE</button>
-        </div>
-      </div>
-      <div class="go-row">
-        <button id="go-shop" class="panel insta-btn" type="button">&#128722; SHOP</button>
-        <button id="go-bag" class="panel insta-btn" type="button">&#127890; BAG</button>
-      </div>
-      <button id="new-game" class="roll-btn" type="button">&#9660; DESCEND AGAIN &#9660;</button>
-    </div>
-  </div>
-
-  <div id="leaderboard" class="modal" hidden role="dialog" aria-label="Leaderboard">
-    <div class="panel modal-box">
-      <button class="modal-close" type="button" aria-label="Close">&#10005;</button>
-      <h2>&#127942; LEADERBOARD</h2>
-      <p class="modal-sub">top 10 runs on this device</p>
-      <table class="lb-table"><tbody id="lb-rows"></tbody></table>
-      <button id="lb-clear" class="lb-clear" type="button">clear leaderboard</button>
-    </div>
-  </div>
-
-  <div id="bag" class="modal" hidden role="dialog" aria-label="Bag">
-    <div class="panel modal-box wide-box bag-box">
-      <button class="modal-close" type="button" aria-label="Close">&#10005;</button>
-      <h2>&#127890; BAG</h2>
-      <p class="modal-sub">tap a find to sell it &middot; <span id="bag-count">0</span> of <span id="bag-total">260</span> kinds discovered</p>
-      <div id="bag-tabs" class="tabs"></div>
-      <div id="bag-grid" class="item-grid"></div>
-      <div id="bag-detail" class="detail"></div>
-    </div>
-  </div>
-
-  <div id="shop" class="modal" hidden role="dialog" aria-label="Shop">
-    <div class="panel modal-box wide-box">
-      <button class="modal-close" type="button" aria-label="Close">&#10005;</button>
-      <h2>&#128722; SHOP</h2>
-      <p class="modal-sub">upgrades are forever &middot; pay with gold and finds</p>
-      <div id="shop-list" class="shop-list"></div>
-    </div>
-  </div>
-
-  <div id="trophies" class="modal" hidden role="dialog" aria-label="Achievements">
-    <div class="panel modal-box wide-box">
-      <button class="modal-close" type="button" aria-label="Close">&#10005;</button>
-      <h2>&#127941; ACHIEVEMENTS</h2>
-      <p class="modal-sub"><span id="ach-count">0</span> unlocked</p>
-      <div id="ach-list" class="ach-list"></div>
-    </div>
-  </div>
-
-  <div id="help" class="modal" hidden role="dialog" aria-label="How to play">
-    <div class="panel modal-box help-box">
-      <button class="modal-close" type="button" aria-label="Close">&#10005;</button>
-      <h2>HOW TO PLAY</h2>
-      <ol class="help-steps">
-        <li><b>Smash the rock.</b> Tap it to swing your pickaxe, or hold to keep swinging. It wiggles: a swing that misses does nothing.</li>
-        <li><b>Damage</b> = (strength &times; 10 + pickaxe &times; 100) &divide; hardness, give or take 10%. Some swings are <b>critical</b>: the brighter the number, the harder the hit.</li>
-        <li><b>Combo:</b> every hit in a row adds 4% damage (up to 3&times; at 50). A miss or a pause of 1.5 s breaks it. Every 10 is a milestone.</li>
-        <li><b>Geodes</b> &#10040; glitter in the dark (about 1 rock in 25): double health, but triple score, three lucky finds and a pile of gold.</li>
-        <li><b>Every rock is different.</b> Most are soft, a few are rock-hard. Hard rocks wiggle slower, so they're easier to hit.</li>
-        <li><b>Each broken rock</b> pays score, a few gold coins and one find: <b class="r0">&#9671; stone</b>, <b class="r1">&#9670; mineral</b>, <b class="r2">&#10022; gem</b>, <b class="r3">&#10070; precious gem</b> or <b class="r4">&#10040; element</b>. Stones and minerals come in small stacks. A lucky rock glows and drops better finds.</li>
-        <li><b>&#9905; Fossils</b>: about 1 rock in 100 has a bone showing through it. Dig it out for a dinosaur, one of 100 in the <b class="r5">ARCHEOLOGY</b> collection, plus 5&times; score and a heap of gold. Dinosaurs come from nowhere else.</li>
-        <li><b>Style points:</b> a dead-center swing is a PERFECT hit (2&times;). Overkill a rock for +25% score, break one fast for extra gold, and a 50 combo starts 10 seconds of GOLD FEVER.</li>
-        <li><b>The mine has moods:</b> cave-ins, a canary to catch, gold veins and the occasional ghost. Rocks talk back. Some have googly eyes. And there are secrets.</li>
-        <li><b>&#127812; Mushrooms</b>: about 1 rock in 200 is a glowing mushroom growing out of the stone. Pick it for one of 100 real species in the <b class="r6">MUSHROOM</b> collection, plus 8&times; score, a pile of gold and a few very strange seconds.</li>
-        <li><b>Reach the goal</b> before you run out of rocks and the cage takes you one level deeper (50 m down), with more rocks: 6 + 3 &times; level. Every level's goal is 15% higher than the last.</li>
-        <li><b>Deeper is darker.</b> Your lamp reaches less far, the mine sounds lower and stranger, and more of <i>them</i> open their eyes to watch you dig.</li>
-        <li><b>Out of rocks</b> below the goal = your lamp goes out and the run is over. Your score is everything you mined this run.</li>
-        <li><b>Finds stay forever.</b> Sell them in the &#127890; BAG for gold, or keep them: the &#128722; SHOP wants gold <i>and</i> specific finds for every upgrade.</li>
-        <li><b>Upgrades:</b> strength, agility (steadier hits), luck (better finds and score), pickaxe, insight (better finds, but rocks get tougher and wilder), dimension (more score, tougher rocks), slow motion (calmer rock) and player power (more score).</li>
-        <li><b>&#9935; Auto-mine</b> swings at the rock on its own, 2.5 times a second and without a combo. Mining by hand is much faster. The &#8779; button silences the mine's background sounds; &#9834; silences everything.</li>
-        <li><b>Falling nuggets</b> drift by now and then. Tap them for a few points; a rare golden one is worth gold.</li>
-      </ol>
-      <h3>TIERS</h3>
-      <table class="lb-table tier-table"><tbody id="tier-rows"></tbody></table>
-    </div>
-  </div>
-
-  <div id="drift" class="drift"></div>
-  <div id="stage" class="stage">
-  <header>
-    <div class="sign">
-      <h1>DRAGONLE</h1>
-      <p class="subtitle">THE BOTTOMLESS MINE</p>
+    <div class="tools">
+      <button class="tool" id="btn-anim" type="button" title="Animations: auto / full / short"></button>
+      <button class="tool" id="btn-sound" type="button" title="Sound on/off"></button>
+      <button class="tool" id="btn-help" type="button" title="How to play"></button>
     </div>
   </header>
 
-  <main class="floor">
-    <section class="scoreboard">
-      <div class="panel stat"><span class="label">Level</span><span id="level" class="value">1</span></div>
-      <div class="panel stat"><span class="label">Score</span><span id="score" class="value">0</span></div>
-      <div class="panel stat"><span class="label">Goal</span><span id="goal" class="value">0</span></div>
-      <div class="panel stat"><span class="label">Rocks</span><span id="rocks" class="value">9</span></div>
-      <div class="panel stat"><span class="label">Total</span><span id="total" class="value">0</span></div>
-    </section>
-    <div class="goal-bar" aria-hidden="true"><div id="goal-fill" class="goal-fill"></div></div>
+  <section class="sky-wrap" aria-label="Sky">
+    <canvas id="sky" class="sky"></canvas>
+    <div id="sky-info" class="sky-info"></div>
+    <div id="tension" class="tension" hidden><span class="tension-label"></span><span class="tension-bar"><i></i></span></div>
+  </section>
 
-    <div class="table cave">
-      <div class="rock-info">
-        <span>HARDNESS <b id="hardness">-</b></span>
-        <span>RARITY <b id="rarity">-</b></span>
-        <span id="rock-depth">LV 1</span>
-      </div>
-      <div class="hp"><div id="hp-fill" class="hp-fill"></div><span id="hp-text" class="hp-text">tap DESCEND</span></div>
-      <div id="pit" class="pit" aria-label="The rock: tap or hold to mine">
-        <div id="pit-eyes" class="pit-eyes" aria-hidden="true"></div>
-        <div id="combo" class="combo" aria-live="polite"></div>
-        <canvas id="rock" class="rock"></canvas>
-      </div>
+  <main id="view" class="view" tabindex="-1"></main>
+
+  <nav class="nav" aria-label="Areas">
+    <button type="button" data-nav="world"><span data-icon="world" data-scale="3"></span>World</button>
+    <button type="button" data-nav="school"><span data-icon="school" data-scale="3"></span>School</button>
+    <button type="button" data-nav="nest"><span data-icon="nest" data-scale="3"></span>Nest</button>
+    <button type="button" data-nav="market"><span data-icon="market" data-scale="3"></span>Market</button>
+    <button type="button" data-nav="factions"><span data-icon="factions" data-scale="3"></span>Factions</button>
+    <button type="button" data-nav="bag"><span data-icon="bag" data-scale="3"></span>Bag</button>
+    <button type="button" data-nav="log"><span data-icon="log" data-scale="3"></span>Log</button>
+  </nav>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true">
+      <button class="modal-x" type="button" aria-label="Close" data-act="closeModal">✕</button>
+      <div id="modal-body"></div>
     </div>
-
-    <p id="message" class="message">&gt; grab your pickaxe</p>
-    <p id="hint" class="hint">Tap DESCEND to play. New here? The ? button explains everything.</p>
-
-    <button id="roll" class="roll-btn" type="button">&#9660; DESCEND &#9660;</button>
-    <div class="btn-row">
-      <button id="auto-btn" class="panel insta-btn" type="button" aria-pressed="false">&#9935; AUTO-MINE: OFF</button>
-      <button id="bag-btn" class="panel insta-btn" type="button">&#127890; BAG</button>
-      <button id="shop-btn" class="panel insta-btn" type="button">&#128722; SHOP <span id="shop-ready"></span></button>
-      <button id="ach-btn" class="panel insta-btn" type="button">&#127941; <span id="ach-short">0</span></button>
-    </div>
-
-    <p class="footer">DEEPEST <span id="top-level">-50 M</span> &middot; tap the falling nuggets &middot; <span id="version" class="version"></span></p>
-    <p id="joke" class="joke"></p>
-  </main>
   </div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <div id="flash" class="flash" aria-hidden="true"></div>
 
-  <aside class="depth" aria-hidden="true">
-    <div id="shaft" class="shaft"></div>
-    <div class="cable"></div>
-    <div class="marker">&#9660; <span id="depth-label">-50 M</span></div>
-  </aside>
-
-  <div id="toast" class="toast" aria-hidden="true">CRIT!</div>
-  <canvas id="fx" class="fx"></canvas>
-
-  <script src="data.js?v=1.7.0"></script>
-  <script src="script.js?v=1.7.0"></script>
+  <script src="config.js?v=3.0.1"></script>
+  <script src="core.js?v=3.0.1"></script>
+  <script src="sprites.js?v=3.0.1"></script>
+  <script src="ui.js?v=3.0.1"></script>
 </body>
 </html>
