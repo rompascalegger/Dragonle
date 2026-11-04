@@ -9,7 +9,7 @@
   const SPEED = Math.max(1, Math.min(200, +params.get('speed') || 1)); // test aid: ?speed=20
   const view = $('#view');
 
-  const ui = { screen: 'world', zone: null, tabs: { school: 'chamber', factions: 'overview', bag: 'scales', log: 'breed' }, last: '', queue: [], modal: null, combo: { n: 0, t: 0 }, nestSel: {}, skip: false };
+  const ui = { screen: 'world', zone: null, tabs: { school: 'chamber', factions: 'overview', bag: 'scales', log: 'breed' }, dfilter: { who: 'all', f: '', sort: 'old', limit: 120 }, last: '', queue: [], modal: null, combo: { n: 0, t: 0 }, nestSel: {}, skip: false };
   let S;
 
   // ------------------------------------------------------------ saving & start
@@ -462,6 +462,41 @@
       <p style="color:#e9dcff">Value = base × level × (1 + zone share) × quality × (fractal ×${C.scales.fractalFactor}) × material · ruler's element ×${C.scales.rulerDemand}, its arch-enemy ×${C.scales.rulerEnemyDemand}.</p>`;
   };
 
+  // every living dragon in one list, with live ages
+  SCREENS.dragons = function () {
+    const F = ui.dfilter;
+    const all = G.list(d => d.status === 'school' || d.status === 'adult' || d.status === 'wild');
+    const groups = { all: () => true, pupils: d => d.status === 'school', adults: d => d.status === 'adult', mine: d => d.status === 'school' || d.raised, wild: d => d.status === 'wild' };
+    let rows = all.filter(groups[F.who] || groups.all);
+    if (F.f !== '') rows = rows.filter(d => d.faction === +F.f);
+    const age = d => G.ageOf(d);
+    const sorts = { old: (a, b) => age(b) - age(a) || a.id - b.id, young: (a, b) => age(a) - age(b) || a.id - b.id, name: (a, b) => a.name.localeCompare(b.name), strong: (a, b) => (b.status === 'adult' ? G.strength(b) : 0) - (a.status === 'adult' ? G.strength(a) : 0) || a.id - b.id };
+    rows.sort(sorts[F.sort] || sorts.old);
+    const count = k => all.filter(groups[k]).length;
+    const whoTabs = [['all', 'All'], ['pupils', 'Pupils'], ['adults', 'Adults'], ['mine', 'Raised by you'], ['wild', 'Wild young']]
+      .map(t => `<button class="btn small ${F.who === t[0] ? 'on' : ''}" type="button" data-act="dfilter" data-k="who" data-v="${t[0]}">${t[1]} (${count(t[0])})</button>`).join('');
+    const sortTabs = [['old', 'Oldest'], ['young', 'Youngest'], ['strong', 'Strongest'], ['name', 'Name']]
+      .map(t => `<button class="btn small ${F.sort === t[0] ? 'on' : ''}" type="button" data-act="dfilter" data-k="sort" data-v="${t[0]}">${t[1]}</button>`).join('');
+    const facSel = `<select data-dfilter="f" aria-label="Faction filter"><option value="">All factions</option>${EL.map((e, f) => `<option value="${f}" ${F.f === String(f) ? 'selected' : ''}>${e.name} (${G.adultsOf(f).length})</option>`).join('')}</select>`;
+    const status = d => d.status === 'school' ? 'Pupil · ' + zoneTitle(S.zones[d.zone]) : d.status === 'wild' ? 'Wild young · ' + elName(d.faction) : elName(d.faction) + (d.raised ? ' · raised by you' : '');
+    const shown = rows.slice(0, F.limit);
+    const list = shown.map(d => `<tr class="drow" data-act="dragon" data-id="${d.id}">
+        <td><span class="dpic">${imgDragon(d, 2)}</span></td>
+        <td><b>${d.name}</b><br><small>${SP.variantName(d)}</small></td>
+        <td>${d.status === 'adult' ? sw(d.faction) + ' ' : ''}${status(d)}<div>${tags(d)}</div></td>
+        <td class="dvec">${vecBar(d.v)}</td>
+        <td><b data-live="age:${d.id}"></b></td>
+        <td data-live="lvl:${d.id}"></td>
+        <td>${d.status === 'adult' ? `<span data-live="str:${d.id}"></span>` : '<span class="mute">–</span>'}</td>
+      </tr>`).join('');
+    return `<div class="screen-head"><h2>All Dragons</h2><span class="sub">${all.length} living dragons · ${G.list(d => d.status === 'egg' || d.status === 'incubating').length} eggs waiting</span></div>
+      <div class="tabs">${whoTabs}</div>
+      <div class="row" style="margin-bottom:12px"><div class="tabs" style="margin:0">${sortTabs}</div><span class="spacer"></span><div style="min-width:200px">${facSel}</div></div>
+      ${rows.length ? `<div class="panel table-wrap"><table class="list dlist"><tr><th></th><th>Name</th><th>Status</th><th>Elements</th><th>Age</th><th>Lvl</th><th>Strength</th></tr>${list}</table>
+        ${rows.length > shown.length ? `<div class="row" style="justify-content:center;margin-top:10px"><button class="btn small" type="button" data-act="dfilter" data-k="limit" data-v="${F.limit + 100}">Show ${Math.min(100, rows.length - shown.length)} more (${rows.length - shown.length} hidden)</button></div>` : ''}</div>`
+        : '<div class="empty panel">No dragons match this filter.</div>'}`;
+  };
+
   SCREENS.log = function () {
     const tab = ui.tabs.log;
     const tabs = tabBar('log', [['breed', 'Breeding log'], ['rolls', 'Rolls'], ['events', 'Events']]);
@@ -721,6 +756,7 @@
     nav: d => { closeAllModals(); ui.screen = d.id; render(true); window.scrollTo(0, 0); },
     zone: d => { closeAllModals(); ui.screen = 'zone'; ui.zone = d.id; render(true); window.scrollTo(0, 0); },
     tab: d => { ui.tabs[d.group] = d.id; render(true); },
+    dfilter: d => { ui.dfilter[d.k] = d.k === 'limit' ? +d.v : d.v; if (d.k !== 'limit') ui.dfilter.limit = 120; render(true); },
     closeModal: () => closeModal(),
     skip: () => { ui.skip = true; },
     goChamber: () => { closeModal(); ui.screen = 'school'; ui.tabs.school = 'chamber'; render(true); },
@@ -786,6 +822,8 @@
     ui.last = ''; // next render rebuilds the ground
   });
   document.addEventListener('change', e => {
+    const fs = e.target.closest('select[data-dfilter]');
+    if (fs) { ui.dfilter[fs.dataset.dfilter] = fs.value; ui.dfilter.limit = 120; fs.blur(); render(true); return; }
     const s = e.target.closest('select[data-nest]'); if (!s) return;
     const i = +s.dataset.nest; ui.nestSel[i] = ui.nestSel[i] || {}; ui.nestSel[i][s.dataset.which] = s.value; s.blur(); render(true);
   });

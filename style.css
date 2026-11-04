@@ -337,7 +337,7 @@ table.list td { padding: 5px 6px; border-bottom: 2px dashed rgba(27,16,36,.2); v
 /* ---------------------------------------------------------------- navigation */
 .nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
-  display: grid; grid-template-columns: repeat(7, 1fr);
+  display: grid; grid-template-columns: repeat(8, 1fr);
   height: calc(var(--navh) + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
   background: var(--paper); border-top: 3px solid var(--ink); box-shadow: 0 -3px 0 0 #000;
 }
@@ -398,3 +398,11 @@ table.list td { padding: 5px 6px; border-bottom: 2px dashed rgba(27,16,36,.2); v
 .cbox .ceggs:empty { display: none; }
 .cbox .ceggs img { animation: pop .25s steps(3); }
 @media (max-width: 640px) { .clutches { width: 200px; left: 8px; } }
+
+/* all-dragons list */
+.dlist .drow { cursor: pointer; }
+.dlist .drow:hover td { background: #fff6dc; }
+.dlist .dpic { display: grid; place-items: center; width: 74px; height: 48px; background: var(--dither), #fbf4e0; box-shadow: var(--pb2); margin: 2px; }
+.dlist .dvec { min-width: 110px; }
+.dlist td small { color: var(--ink2); }
+@media (max-width: 640px) { .dlist .dvec, .dlist th:nth-child(4) { display: none; } .nav button { font-size: 10px; } }

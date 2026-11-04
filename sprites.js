@@ -416,6 +416,7 @@
     lock: ['...kkkkk....', '..kSSSSSk...', '..kS...Sk...', '..kS...Sk...', '.kkkkkkkkk..', '.kyyyyyyyk..', '.kyyykyyyk..', '.kyyykyyyk..', '.kyyyyyyyk..', '.kooooooook.', '.kkkkkkkkk..', '............'],
     star: ['.....kk.....', '.....ky.....', '....kyyk....', 'kkkkkyykkkkk', '.kyyyyyyyyk.', '..kyywyyyk..', '...kyyyyk...', '..kyykkyyk..', '..kyk..kyk..', '.kk.....kk..', '............', '............'],
     scroll: ['.kkkkkkkkk..', 'ktttttttttk.', 'kkttttttttk.', '.kttkkktttk.', '.kttttttttk.', '.kttkkkkttk.', '.kttttttttk.', '.kttkkttttk.', '.kttttttttkk', '.kttttttttttk', '..kkkkkkkkkk', '............'],
+    dragons: ['...k....k...', '..kyk..kyk..', '..kyyk.kyk..', '..kggkkggk..', '.kgggggggk..', '.kggwkgggk..', 'kgggkkgggggk', 'kggggggggrgk', 'kgGGggggkkk.', '.kgGGgggk...', '..kgGGggk...', '...kkkkkk...'],
     peace: ['............', '...kkkkkk...', '..kgggggGk..', '.kgggwggggk.', '.kggggggggk.', '..kGggggGk..', '...kGggGk...', '....kGGk....', '.....kk.....', '....knNk....', '....kkkk....', '............'],
   };
   function icon(name, scale) {
