@@ -19,11 +19,11 @@ A dragon world serves as the hub, with portals to twelve elemental zones. You bu
 | File | What it is |
 |---|---|
 | `index.html` | Page structure |
-| `style.css` | Retro pixel look and animations |
+| `style.css` | Retro pixel look (notched pixel borders, pixel fonts, stepped animations) |
 | `config.js` | **All balancing numbers** (tagged FIXED / PROPOSAL / OPEN from the design spec) |
 | `core.js` | Game logic without DOM (also runs in Node) |
 | `sprites.js` | Runtime pixel art: dragons, eggs, scales, portals, hatcheries, icons, sky dragons |
-| `ui.js` | Screens, animations, sky and sound |
+| `ui.js` | Screens, animations, the proportional sky, the 13-chapter Keeper's Handbook and sound |
 | `tools/sim.js`, `tools/sim.html` | Balancing simulation (bot plays for hours, reports population, gold, wars) |
 | `tools/sprites.html` | Sprite sheet for art review |
 

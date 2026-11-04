@@ -49,6 +49,14 @@
   function vecBar(v) { return `<div class="vec">${G.present(v).sort((a, b) => v[b] - v[a]).map(e => `<span style="width:${v[e] * 5}%;background:${EL[e].color}" title="${elName(e)} ${v[e] * 5} %"></span>`).join('')}</div>`; }
   function vecRows(v) { return `<div class="vecrows">${G.present(v).sort((a, b) => v[b] - v[a]).map(e => `<div class="vecrow"><span>${elTag(e)}</span><div class="bar"><i style="width:${v[e] * 5}%;background:${EL[e].color}"></i></div><b>${v[e] * 5} %</b></div>`).join('')}</div>`; }
   const mutated = d => d.mutated != null && d.mutated !== false;
+  function hero(inner, mat, id, hidden) {
+    const cols = mat ? ['#FFFFFF', '#7FE7F2', '#E8609E', '#FFD23F'] : ['#FFF6B0', '#FFD23F', '#F08A2A'];
+    return `<div class="hero ${mat ? 'mat' : ''}">${im(SP.burst(cols, 0, 4), '', 'bst')}${im(SP.burst(cols, 1, 4), '', 'bst f1')}<span class="fg" ${id ? `id="${id}"` : ''} ${hidden ? 'style="visibility:hidden"' : ''}>${inner}</span></div>`;
+  }
+  function burstBox(text, cols) {
+    cols = cols || ['#FF8A5C', '#E04434', '#9E2418'];
+    return `<div class="burstbox">${im(SP.burst(cols, 0, 4, 40), '')}${im(SP.burst(cols, 1, 4, 40), '', 'f1')}<span class="fanfare">${text}</span></div>`;
+  }
   function tags(d) {
     const t = [];
     if (G.isPure(d.v)) t.push('<span class="tag pure">purebred</span>');
@@ -89,7 +97,7 @@
 
   // ------------------------------------------------------------ toasts, flash, modal
   function toast(text, kind) {
-    const el = document.createElement('div'); el.className = 'toast ' + (kind || ''); el.innerHTML = text;
+    const el = document.createElement('div'); el.className = 'toast bubble ' + (kind || ''); el.innerHTML = text;
     $('#toasts').appendChild(el); setTimeout(() => el.remove(), 4200);
     while ($('#toasts').children.length > 4) $('#toasts').firstChild.remove();
   }
@@ -100,6 +108,7 @@
     const box = $('#modal');
     if (!m) { ui.modal = null; box.hidden = true; return; }
     ui.modal = m; ui.skip = false; box.hidden = false;
+    box.querySelector('.modal-box').classList.toggle('wide', !!m.wide);
     const body = $('#modal-body');
     if (m.build) m.build(body); else body.innerHTML = m.html;
     applyLive(body);
@@ -418,9 +427,9 @@
       const col = al ? G.allianceColor(a, b) : r > 0 ? '#3fb85a' : '#ff4d3d';
       if (al) lines += `<line x1="${pos[a][0]}" y1="${pos[a][1]}" x2="${pos[b][0]}" y2="${pos[b][1]}" stroke="#1b1024" stroke-width="10"/>`;
       lines += `<line x1="${pos[a][0]}" y1="${pos[a][1]}" x2="${pos[b][0]}" y2="${pos[b][1]}" stroke="${col}" stroke-width="${al ? 6 : 3}" ${r < 0 ? 'stroke-dasharray="7 5"' : ''}><title>${elName(a)} – ${elName(b)}: ${Math.round(r)}${al ? ' · ' + G.allianceName(a, b) : ''}</title></line>`;
-      if (al) lines += `<text x="${(pos[a][0] + pos[b][0]) / 2}" y="${(pos[a][1] + pos[b][1]) / 2 - 8}" fill="${col}" font-size="18" text-anchor="middle" font-family="Bangers" stroke="#1b1024" stroke-width="4" paint-order="stroke" letter-spacing="1">${G.allianceName(a, b)}</text>`;
+      if (al) lines += `<text x="${(pos[a][0] + pos[b][0]) / 2}" y="${(pos[a][1] + pos[b][1]) / 2 - 8}" fill="${col}" font-size="18" text-anchor="middle" font-family="Silkscreen" stroke="#1b1024" stroke-width="4" paint-order="stroke" letter-spacing="1">${G.allianceName(a, b)}</text>`;
     }
-    const nodes = EL.map((e, i) => `<g><rect x="${pos[i][0] - 14}" y="${pos[i][1] - 14}" width="28" height="28" rx="4" fill="${e.color}" stroke="${i === S.ruler ? '#ffd23f' : '#1b1024'}" stroke-width="${i === S.ruler ? 5 : 3}"/><text x="${pos[i][0]}" y="${pos[i][1] + (pos[i][1] > cy ? 34 : -22)}" fill="#1b1024" font-size="17" text-anchor="middle" font-family="Bangers" letter-spacing="1">${e.name}</text></g>`).join('');
+    const nodes = EL.map((e, i) => `<g><rect x="${pos[i][0] - 14}" y="${pos[i][1] - 14}" width="28" height="28" rx="4" fill="${e.color}" stroke="${i === S.ruler ? '#ffd23f' : '#1b1024'}" stroke-width="${i === S.ruler ? 5 : 3}"/><text x="${pos[i][0]}" y="${pos[i][1] + (pos[i][1] > cy ? 34 : -22)}" fill="#1b1024" font-size="17" text-anchor="middle" font-family="Silkscreen" letter-spacing="1">${e.name}</text></g>`).join('');
     return `<div class="panel"><svg class="net" viewBox="0 0 400 380" role="img" aria-label="Faction relationship network">${lines}${nodes}</svg>
       <div class="legend"><span><span class="sw" style="background:#3fb85a"></span> strong liking</span><span><span class="sw" style="background:#ff4d3d"></span> strong dislike</span><span>thick = alliance with its own colour and name</span></div></div>`;
   }
@@ -520,7 +529,7 @@
     showModal({ rebuild: () => dragonModalHtml(d, statusText, parents), build(b) { b.innerHTML = this.rebuild(); } }, true);
   }
   function dragonModalHtml(d, statusText, parents) {
-    return `<h2>${d.name}</h2><div class="reveal"><div class="hero ${d.mat ? 'mat' : ''}">${imgDragon(d, 7)}</div><div>${tags(d)}</div></div>
+    return `<h2>${d.name}</h2><div class="reveal">${hero(imgDragon(d, 5), d.mat)}<div>${tags(d)}</div></div>
       <p class="center"><b>${statusText}</b></p>
       <h3>${icon('lupe')} Magnifier – exact shares</h3>${vecRows(d.v)}
       <div class="grid cols-2" style="margin-top:12px;gap:6px">
@@ -535,13 +544,13 @@
       rebuild() {
         const d = S.dragons[id]; if (!d) return '<p>This egg no longer exists.</p>';
         const cls = G.CLS[d.cls || 'cheap'];
-        const h = `<h2>${cls.name} egg</h2><div class="reveal"><div class="hero">${imgEgg(d, 7, d.status === 'incubating' ? (d.ready ? 3 : G.crackStage(d)) : 0)}</div></div>`;
+        const h = `<h2>${cls.name} egg</h2><div class="reveal">${hero(imgEgg(d, 6, d.status === 'incubating' ? (d.ready ? 3 : G.crackStage(d)) : 0))}</div>`;
         if (!d.examined) {
           return h + `<p class="center">What sleeps inside is uncertain. The magnifier examines the egg and gives you a riddle.</p><div class="row" style="justify-content:center"><button class="btn" type="button" data-act="examine" data-id="${d.id}">${icon('lupe')} Examine (${G.examineCost(d)} G)</button></div>`;
         }
         const r = d.riddle;
         return h + `<h3>${icon('lupe')} Magnifier – uncertain candidates</h3><p class="center">${r.cand.map(e => `33 % ${elTag(e)} (?)`).join(' · ')}</p>
-          <h3>The riddle</h3><div class="riddle">${r.hints.map(t => `<i>“${t}”</i>`).join('')}</div>
+          <h3>The riddle</h3><div class="riddle bubble">${r.hints.map(t => `<i>“${t}”</i>`).join('')}</div>
           <p style="margin-top:18px"><small>Clarity ${r.clarity}/${C.riddle.maxClarity} – higher school reputation makes riddles clearer. The label is only a note and does not change the egg.</small></p>
           <h3>Pick a label</h3><div class="labels">${r.cand.map(e => `<button class="btn ${r.label === e ? 'on' : ''}" type="button" data-act="label" data-id="${d.id}" data-el="${e}">${elTag(e)}${r.label === e ? ' ✔' : ''}</button>`).join('')}</div>`;
       },
@@ -568,7 +577,7 @@
   function hatchReveal(res) {
     if (res.dud) {
       Snd.bad();
-      showModal({ html: `<h2>A dud!</h2><div class="reveal"><div class="hero">${im(SP.egg({ shell: '#8c8496', spots: '#5d566a', crack: 3, seed: 3 }, 7), '')}</div>
+      showModal({ html: `<h2>A dud!</h2><div class="reveal">${hero(im(SP.egg({ shell: '#8c8496', spots: '#5d566a', crack: 3, seed: 3 }, 6), ''))}
         <p>The egg was empty. The shell is refunded: <b>+${fmt(res.refund)} G</b> (${pct(G.CLS[res.cls].refund)}).</p>
         <p><small>Dud shells: ${S.market.shells}/${C.market.pityShells}</small></p>${res.pity ? `<p class="epic"><b>Pity rule: a guaranteed ${G.CLS[res.pity.cls].name} egg waits in the egg chamber!</b></p>` : ''}</div>` }, true);
       return;
@@ -579,7 +588,7 @@
       busy: true,
       build(b) {
         const els = G.present(d.v).sort((x, y) => d.v[y] - d.v[x]);
-        b.innerHTML = `<h2>Hatched!</h2><div class="reveal"><div class="hero ${d.mat ? 'mat' : ''}" id="hx" style="visibility:hidden">${imgDragon(d, 7)}</div><div class="big" id="hn">…</div>
+        b.innerHTML = `<h2>Hatched!</h2><div class="reveal">${hero(imgDragon(d, 5), d.mat, 'hx', true)}<div class="big" id="hn">…</div>
           <div class="vecrows" style="width:100%">${els.map(e => `<div class="vecrow" data-e="${e}" style="visibility:hidden"><span>${elTag(e)}</span><div class="bar"><i style="width:0;background:${EL[e].color}"></i></div><b>${d.v[e] * 5} %</b></div>`).join('')}</div>
           <div id="hextra"></div><button class="btn small ghost" type="button" data-act="skip">Skip</button></div>`;
         (async () => {
@@ -621,7 +630,7 @@
       busy: true,
       build(body) {
         body.innerHTML = `<h2>A clutch!</h2><div class="clutch"><b>${a ? a.name : '?'} × ${b ? b.name : '?'}</b>
-          <div class="nestbowl flicker" id="bowl" style="--glow:${mix}"><div class="slots">${Array.from({ length: 12 }, (_, i) => `<div class="shadow-egg off" data-i="${i}"></div>`).join('')}</div></div>
+          <div class="pxnest flicker" id="bowl">${im(SP.nest(mix, false, 4), '')}<div class="slots">${Array.from({ length: 12 }, (_, i) => `<div class="slot off" data-i="${i}">${im(SP.egg({ shell: '#2a1a34', spots: '#2a1a34', seed: i + 1, plain: true, line: '#0c0612' }, 2), '', 'sh')}</div>`).join('')}</div></div>
           <div class="counter" id="ctr">…</div><div class="rolls" id="rolls"></div><div id="cmsg"></div>
           <button class="btn small ghost" type="button" data-act="skip">Skip</button></div>`;
         run(body);
@@ -639,12 +648,12 @@
     }
     async function run(body) {
       const ctr = body.querySelector('#ctr'), rolls = body.querySelector('#rolls'), bowl = body.querySelector('#bowl'), msg = body.querySelector('#cmsg');
-      const shadows = [...body.querySelectorAll('.shadow-egg')];
+      const shadows = [...body.querySelectorAll('.slot')];
       const addRoll = t => { rolls.insertAdjacentHTML('beforeend', `<span>${t}</span>`); };
       await spin(ctr, 0, C.breed.gateMax, r.a, 1400 * T);
       addRoll('gate ' + r.a + ' / 0–' + C.breed.gateMax);
       bowl.classList.remove('flicker');
-      if (r.a === 0) { bowl.classList.add('dim', 'smoke'); msg.innerHTML = '<p class="bad"><b>The nest goes dark. An empty clutch.</b></p>'; Snd.bad(); return done(); }
+      if (r.a === 0) { bowl.querySelector('img').src = SP.nest(mix, true, 4).src; bowl.insertAdjacentHTML('beforeend', '<div class="smoke">puff . . . puff</div>'); msg.innerHTML = '<p class="bad"><b>The nest goes dark. An empty clutch.</b></p>'; Snd.bad(); return done(); }
       Snd.tone(220, 0.4, 'sawtooth', 0.05);
       await wait(300 * T);
       await spin(ctr, 1, C.breed.xMax, r.x, 1600 * T);
@@ -661,7 +670,7 @@
       for (let i = 0; i < r.z; i++) {
         if (i === r.z - 1 && r.z > 1) await wait(700 * T); // the last step lingers
         const egg = S.dragons[ev.eggs[i]];
-        shadows[i].classList.add('real'); shadows[i].innerHTML = imgEgg(egg || { seed: i, shell: mix }, 3);
+        shadows[i].classList.add('real'); shadows[i].innerHTML = imgEgg(egg || { seed: i, shell: mix }, 2);
         Snd.egg(i); await wait(220 * T);
       }
       ctr.textContent = r.z + (r.z === 1 ? ' EGG' : ' EGGS');
@@ -674,7 +683,7 @@
       if (ui.skip) {
         const ctr = body.querySelector('#ctr'); if (ctr) ctr.textContent = r.a ? r.z + (r.z === 1 ? ' EGG' : ' EGGS') : '0';
         const rolls = body.querySelector('#rolls'); if (rolls) rolls.innerHTML = `<span>gate ${r.a}</span>${r.a ? `<span>x = ${r.x}</span><span>y = ${r.y}</span><span>z = ${r.z}</span>` : ''}`;
-        body.querySelectorAll('.shadow-egg').forEach((s, i) => { if (i < r.z) { s.className = 'shadow-egg real'; s.innerHTML = imgEgg(S.dragons[ev.eggs[i]] || { seed: i, shell: mix }, 3); } else s.classList.add('off'); });
+        body.querySelectorAll('.slot').forEach((s, i) => { if (i < r.z) { s.className = 'slot real'; s.innerHTML = imgEgg(S.dragons[ev.eggs[i]] || { seed: i, shell: mix }, 2); } else s.classList.add('off'); });
       }
       m.busy = false;
       const sk = body.querySelector('[data-act="skip"]');
@@ -687,7 +696,7 @@
     const d = S.dragons[ev.id]; if (!d) return;
     const fac = ev.faction;
     showModal({
-      html: `<h2>Grown up: ${d.name}</h2><div class="reveal"><div class="hero ${d.mat ? 'mat' : ''}">${imgDragon(d, 6)}</div>
+      html: `<h2>Grown up: ${d.name}</h2><div class="reveal">${hero(imgDragon(d, 5), d.mat)}
         <h3>Imprinting – ${zoneTitle(S.zones[ev.zone])}</h3>
         <div style="width:100%;display:grid;gap:4px"><small>before</small>${vecBar(ev.before)}<small>after</small>${vecBar(ev.after)}</div>
         ${ev.deep ? '<p class="epic"><b>It carries the zone\'s arch-enemy and turns deep: darker tint, no imprint, no zone bonus.</b></p>' : ev.shifted ? '<p>The zone shifts it one step towards its element.</p>' : '<p><small>No shift possible.</small></p>'}
@@ -704,7 +713,7 @@
     showModal({
       html: `<h2>The war is over</h2><div class="reveal"><p>${elTag(w.attacker)} <b>${w.pa.toFixed(1)}</b> power vs ${elTag(w.defender)} <b>${w.pd.toFixed(1)}</b> power <small>(allies count half)</small></p>
         <p>Attacker's chance: <b>${pct(w.chance)}</b> · roll: <b>${w.roll.toFixed(3)}</b> ${w.attackerWins ? '&lt;' : '≥'} ${w.chance.toFixed(3)}</p>
-        <div class="burst"><span class="fanfare">${elName(w.winner).toUpperCase()} WINS!</span></div>${w.newRuler ? `<p class="big">${elName(w.winner)} now rules the sky.</p>` : ''}
+        ${burstBox(elName(w.winner).toUpperCase() + ' WINS!')}${w.newRuler ? `<p class="big">${elName(w.winner)} now rules the sky.</p>` : ''}
         <p><small>The losers' king falls. About ${pct(C.war.loserDie)} fall, ${pct(C.war.loserDefect)} defect or flee, the rest stay. Everyone involved is war-marked.</small></p>
         ${w.fates.length ? '<h3>Dragons you raised</h3>' + w.fates.map(x => `<div class="row">${im(SP.dragon({ id: 'f' + x.id, v: x.v, mat: x.mat, seed: x.seed, deep: false }, 2), '')} ${x.name}: ${fateText(x.fate)}</div>`).join('') : ''}</div>`,
     });
@@ -719,14 +728,14 @@
         case 'eggReady': toast('An egg in the ' + zoneTitle(S.zones[e.zone]) + ' is ready to hatch!', 'good'); Snd.tone(880, 0.1, 'triangle', 0.06); break;
         case 'mature': { const d = S.dragons[e.id]; if (d) toast(d.name + ' is now mature (300 yrs).'); break; }
         case 'repLevel':
-          if (e.up) { Snd.fanfare(); const unl = C.rep.unlocks[G.REPL[e.to].id]; showModal({ html: `<div class="reveal"><div class="burst"><span class="fanfare">${G.REPL[e.to].name.toUpperCase()}!</span></div><p>${elTag(e.f)} now regards you as <b>${G.REPL[e.to].name}</b>.</p>${unl ? '<p class="good"><b>Unlocked: ' + unl + '</b></p>' : ''}<button class="btn" type="button" data-act="closeModal">Continue</button></div>` }); }
+          if (e.up) { Snd.fanfare(); const unl = C.rep.unlocks[G.REPL[e.to].id]; showModal({ html: `<div class="reveal">${burstBox(G.REPL[e.to].name.toUpperCase() + '!', ['#FFF6B0', '#FFD23F', '#F08A2A'])}<p>${elTag(e.f)} now regards you as <b>${G.REPL[e.to].name}</b>.</p>${unl ? '<p class="good"><b>Unlocked: ' + unl + '</b></p>' : ''}<button class="btn" type="button" data-act="closeModal">Continue</button></div>` }); }
           else toast(elTag(e.f) + ': reputation drops to ' + G.REPL[e.to].name, 'bad');
           break;
         case 'warAnnounce': toast(elName(e.attacker) + ' challenges ' + elName(e.defender) + '! The sky darkens.', 'war'); Snd.drum(); break;
         case 'warFight': toast('The war begins!', 'war'); break;
         case 'warResult': warResultModal(e); break;
         case 'coronation': { const k = S.dragons[e.king]; const l = G.lawOf(e.f) || C.lawPlaceholder; toast(`♛ Coronation: ${k ? k.name : '?'} (${elName(e.f)}) – ${l.name}: ${l.text}`, 'epic'); Snd.epic(); break; }
-        case 'portal': { const z = S.zones[e.zone]; Snd.epic(); flash(); showModal({ html: `<div class="reveal"><div class="hero">${im(SP.portal(z.els.map(x => EL[x].color), 0, false, 5), '')}</div><div class="fanfare">A PORTAL OPENS!</div><p>The <b>${zoneTitle(z)}</b> can now be reached (${e.how}).</p><button class="btn" type="button" data-act="zone" data-id="${z.id}">Step through</button></div>` }); break; }
+        case 'portal': { const z = S.zones[e.zone]; Snd.epic(); flash(); showModal({ html: `<div class="reveal">${hero(im(SP.portal(z.els.map(x => EL[x].color), 0, false, 4), ''))}<div class="fanfare">A PORTAL OPENS!</div><p>The <b>${zoneTitle(z)}</b> can now be reached (${e.how}).</p><button class="btn" type="button" data-act="zone" data-id="${z.id}">Step through</button></div>` }); break; }
         case 'speech': toast(e.text, 'war'); break;
         case 'toast': toast(e.text); break;
         default: break;
@@ -769,7 +778,8 @@
     pair: d => { const i = +d.id; const sel = ui.nestSel[i] || {}; if (!sel.a || !sel.b) return toast('Choose two dragons.', 'bad'); const r = G.setPair(i, +sel.a, +sel.b); if (r.ok) { delete ui.nestSel[i]; Snd.fanfare(); } result(r, r.ok ? 'The pair moves into the nest.' : null); },
     unpair: d => { G.clearPair(+d.id); render(true); },
     activity: d => { const r = G.doActivity(+d.f, +d.i); if (r.ok) { Snd.coin(); toast(C.speech.thanks.replace('{f}', elName(+d.f)) + ' ' + r.msg, 'good'); } result(r); },
-    help: () => helpModal(),
+    help: () => { closeModal(); helpModal(0); },
+    book: d => { ui.bookPage = +d.id; refreshModal(); const mb = document.querySelector('.modal-box'); if (mb) mb.scrollTop = 0; },
     reset: () => { if (confirm('Really delete your save and start over?')) { localStorage.removeItem(C.saveKey); location.reload(); } },
   };
   function closeAllModals() { ui.queue = ui.queue.filter(m => m.keep); if (ui.modal && !ui.modal.busy) nextModal(); }
@@ -812,19 +822,134 @@
   $('#btn-help').addEventListener('click', () => helpModal());
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && ui.modal) closeModal(); });
 
-  function helpModal() {
+  // ------------------------------------------------------------ the Keeper's Handbook
+  const pd = (v, id, scale, flip) => imgDragon({ id: 'book' + id, v, mat: 0, seed: 1000 + String(id).length * 7 + v.indexOf(Math.max(...v)) * 13, deep: false, name: '' }, scale || 3, flip);
+  const pureV = e => { const v = new Array(NE).fill(0); v[e] = 20; return v; };
+  const mixV = (a, na, b2, nb) => { const v = new Array(NE).fill(0); v[a] = na; v[b2] = nb; return v; };
+  const skyImg = col => { const cv = SP.skyDragon(col, 0, false, false, 0, false); return `<img src="${cv.toDataURL()}" width="${cv.width * 3}" height="${cv.height * 3}" alt="" style="background:#2a1c66">`; };
+  const fig = (inner, cap) => `<figure class="fig">${inner}${cap ? `<figcaption>${cap}</figcaption>` : ''}</figure>`;
+  const tip = t => `<div class="tip"><b>KEEPER'S TIP</b> ${t}</div>`;
+  const CHAPTERS = [
+    { t: 'Welcome, Keeper', i: 'egg', body: () => `
+      <p>High above the clouds lies a world that belongs to the dragons. Twelve elements shape it – fire and frost, light and shadow, storm and stone – and twelve factions fight for the right to rule its sky.</p>
+      <p>You are a <b>Keeper</b>. Grown dragons do not answer to you. But every dragon was once an egg, and eggs are your business. You buy them, guess what sleeps inside, warm them in the right place and raise the hatchlings at the <b>Dragon School</b>. When they come of age they fly off, choose a faction of their own – and from then on, their shed scales are your living.</p>
+      ${fig(im(SP.egg({ shell: '#E6DCC0', spots: '#B8A57E', seed: 3 }, 4), '') + ' → ' + im(SP.egg({ shell: '#E6DCC0', spots: '#B8A57E', seed: 3, crack: 2 }, 4), '') + ' → ' + pd(pureV(1), 'w1', 3) + ' → ' + skyImg(EL[1].color), 'egg · cracking · hatchling · grown dragon in the sky')}
+      <h3>Time flows only while you play</h3>
+      <p><b>One game year is one real second.</b> Eggs, pupils and wars only move while the game is open. When you leave, the world holds its breath – only the grown dragons keep ageing, because they live by the calendar, not by your clock.</p>
+      <table><tr><th>Moment</th><th>Age</th><th>Real time</th></tr><tr><td>Level up</td><td>every 10 years</td><td>10 s</td></tr><tr><td>Mature (can breed)</td><td>300 years</td><td>5 min</td></tr><tr><td>Grown, leaves school</td><td>1000 years</td><td>≈ 17 min</td></tr></table>
+      <h3>Finding your way</h3>
+      <p>${icon('world')} <b>World</b> – the portals to the zones. ${icon('school')} <b>School</b> – egg chamber, pupils, riddle log. ${icon('nest')} <b>Nest</b> – pair your dragons. ${icon('market')} <b>Market</b> – buy and sell eggs. ${icon('factions')} <b>Factions</b> – politics, reputation, wars. ${icon('bag')} <b>Bag</b> – scales and your collection. ${icon('log')} <b>Log</b> – every roll, every clutch, every event.</p>
+      ${tip('A red dot on the bottom bar means something wants your attention: an egg is ready, a nest is restless, or the daily wonder egg is waiting.')}` },
+    { t: 'Eggs & the Merchant', i: 'market', body: () => `
+      <p>The merchant sells eggs in five classes. The class tells you how the egg was bred – it never tells you the element. That is what the magnifier is for.</p>
+      ${fig(C.eggClasses.map((c, i) => im(SP.egg({ shell: c.shell, spots: c.spots, seed: i + 2 }, 4), c.name)).join(''), C.eggClasses.map(c => c.name).join(' · '))}
+      <table><tr><th>Class</th><th>Inside</th><th>Price</th><th>Dud</th><th>Refund</th></tr>
+      ${C.eggClasses.map(c => `<tr><td><b>${c.name}</b></td><td>${({ cheap: 'random mix', common: 'one element ≥ 50 %', noble: 'one element ≥ 80 %', pure: 'one element, 100 %', rare: 'a deliberate alliance or arch-enemy mix' })[c.id]}</td><td>${fmt(c.price)} G</td><td>${pct(c.dud)}</td><td>${pct(c.refund)}</td></tr>`).join('')}</table>
+      <h3>Duds</h3><p>Any bought egg can be empty. When a dud "hatches" you get back part of the shell price – up to every last coin for the finest classes. Keep the shells: after <b>${C.market.pityShells} dud shells</b> the merchant feels sorry for you and gives you a guaranteed egg of a higher class.</p>
+      <h3>Offers, the wonder egg and selling</h3><p>Better eggs appear as offers that expire. Once a day a <b>wonder egg</b> can be claimed for free. The merchant buys eggs back at ${pct(C.market.buybackRate)} of their price (examined eggs +${pct(C.market.examinedBonus)}), but pays less the more eggs of one element you dump on him; his appetite returns slowly.</p>
+      ${tip('Cheap eggs are the <b>only</b> way to find metal and gem dragons. A steady trickle of Cheap eggs is never wasted.')}` },
+    { t: 'The Magnifier & Riddles', i: 'lupe', body: () => `
+      <p>An egg's shell hides its element vector. At the School you can <b>examine</b> an egg for a little gold. The magnifier then names three uncertain candidates – one of them is the egg's strongest element – and the egg whispers a <b>riddle</b>.</p>
+      <div class="riddle bubble"><i>“${C.riddle.phrases[3].t}”</i><i>“${C.riddle.phrases[19].t}”</i></div>
+      <p>The riddle language never lies about its own meaning: a phrase always points at the same pair of elements. A cool shell always means water or ice. But at first some hints are noise. Pick one of the three candidates as your <b>label</b>.</p>
+      <h3>Why guess?</h3><p>The label is only a note – it does not change the egg. But when the dragon hatches, a correct guess earns <b>school reputation</b>, and hits in a row earn more. Higher school reputation makes every later riddle clearer: more hints, less noise (clarity ${G.schoolClarity()}/${C.riddle.maxClarity} right now).</p>
+      <p>Rarely a riddle mentions a <b>glitter</b> beneath the shell. Often that means metal. Sometimes it means nothing at all.</p>
+      ${tip('Keep your own dictionary. The School\'s <b>riddle log</b> lists every riddle, your label and the dragon that actually hatched – the language reveals itself there.')}` },
+    { t: 'Hatching & the Zones', i: 'world', body: () => `
+      <p>Each portal leads to an elemental zone with its own hatchery. The magma zone warms eggs in a lava pool, the fire zone in an ember oven.</p>
+      ${fig(im(SP.hatchery('lava', ['#FF8C1A'], 0, 3), '') + im(SP.hatchery('oven', ['#E8341C'], 0, 3), '') + im(SP.hatchery('nest', ['#3FA34D'], 0, 3), ''), 'lava pool · ember oven · hatchery (other zones: still a placeholder)')}
+      <p>Place an egg in a free brood slot. Over ${C.incubation.seconds} seconds cracks spread across the shell – but the <b>last crack is yours</b>. Click the egg when it shakes.</p>
+      <h3>The right zone matters</h3>
+      <p>Which dragon hatches is pure chance. Where it grows up decides whether it reaches its potential. Its scales are worth <b>×(1 + share of the zone's element)</b>:</p>
+      <table><tr><th>Dragon</th><th>Raised in</th><th>Scale value</th></tr><tr><td>100 % Water</td><td>Water Zone</td><td><b>×2.0</b></td></tr><tr><td>60 % Water, 40 % Light</td><td>Water Zone</td><td>×1.6</td></tr><tr><td>60 % Water, 40 % Light</td><td>Fire Zone</td><td>×1.0</td></tr></table>
+      <p>At 1000 years the zone <b>imprints</b> the dragon: one step of its strongest foreign element moves to the zone's element. Reaching 20/20 that way makes it purebred. But a dragon that carries the zone's <b>arch-enemy</b> turns <b>deep</b> instead – a darker tint, no imprint, no bonus. A dragon raised in the zone of its own strongest element becomes <b>shimmering</b>.</p>
+      ${fig(pd(mixV(0, 8, 4, 12), 'z1', 3) + pd(mixV(0, 8, 4, 12), 'z2', 3).replace('<img', '<img style="filter:brightness(.6)"'), 'normal · deep')}` },
+    { t: 'Dragon School', i: 'school', body: () => `
+      <p>Every hatchling joins the School in its zone. School life is passive – the young ones grow while you play. Every 10 years they gain a level; at <b>300</b> they are mature and may breed; at <b>1000</b> they are grown.</p>
+      <h3>Coming of age</h3>
+      <p>A grown dragon leaves the School, is imprinted by its zone and <b>chooses its own faction</b>. The choice follows its element shares, nudged by politics: the ruling faction attracts, the ruler's arch-enemy repels. The roll is shown openly.</p>
+      ${fig(pd(mixV(4, 8, 0, 12), 'g1', 4), 'a 60 % Fire / 40 % Lightning dragon joins Fire about 60 % of the time – more if Fire rules')}
+      <p>From that moment it belongs to its faction, not to you. It flies in the sky in the faction's colours and drops its scales onto the ground of the zone it grew up in.</p>
+      ${tip('The <b>first</b> dragon you raise for a faction opens the door to it: your reputation jumps to Friendly and you may collect its scales.')}` },
+    { t: 'The Twelve Elements', i: 'star', body: () => `
+      <p>Every dragon is a mix of twelve elements in 5 % steps. Its body is made of pure-coloured scales in exactly that ratio – a 40 % Lightning, 60 % Fire dragon is 40 % yellow and 60 % red scales. Rare <b>fractal scales</b> carry the blended colour.</p>
+      ${fig(EL.map((e, i) => `<span style="display:inline-grid;justify-items:center;font-size:12px">${pd(pureV(i), 'e' + i, 2)}${e.name}</span>`).join(''), 'purebred dragons of all twelve elements')}
+      <h3>Arch-enemies</h3>
+      <table>${[0, 2, 4, 6, 8, 10].map(i => `<tr><td>${elTag(i)}</td><td>✕</td><td>${elTag(i + 1)}</td></tr>`).join('')}</table>
+      <p>Arch-enemies never mate and never ally. A dragon with only one element is <b>purebred</b>. A dragon that somehow carries both halves of an enemy pair – usually through a mutation – is an <b>impossible dragon</b>.</p>` },
+    { t: 'Breeding & Clutches', i: 'heart', body: () => {
+      const ex = expectedClutch();
+      return `
+      <p>At the Nest you can pair two dragons aged 300+: your pupils, or grown dragons of factions where you are Friendly (same faction or allied). A pair breeds on average every 50 years – but the spread is huge. Shortly before, the nest turns <b>restless</b>.</p>
+      <h3>Four open rolls</h3>
+      <p>1. The <b>gate roll</b> 0–6: on 0 the nest goes dark. 2. <b>x</b> from 1–12: that many egg shadows appear. 3. <b>y</b> from 1–x: the extra shadows fade. 4. <b>z</b> from 1–y: the last shadows become real eggs.</p>
+      ${fig(im(SP.nest('#3A76E0', false, 2), ''), 'the nest glows in the parents\' blended colour')}
+      <table><tr><th>Eggs</th>${ex.map((p2, z) => `<th>${z}</th>`).join('')}</tr><tr><td>Chance</td>${ex.map(p2 => `<td>${(p2 * 100).toFixed(p2 < 0.01 ? 2 : 1)}</td>`).join('')}</tr></table>
+      <p>On average two eggs; twelve eggs happen once in 2016 clutches.</p>
+      <h3>Inheritance</h3>
+      <p>Two purebred parents of the same element <b>always</b> breed purebred eggs. Otherwise the egg starts at the parents' average and drifts 0–2 steps; with ${pct(C.breed.mutationChance)} chance a brand-new element appears – a <b>mutation</b>. The Nest previews the possible range before you pair.</p>`; } },
+    { t: 'Scales', i: 'bag', body: () => `
+      <p>Grown dragons shed a scale every ${C.scales.dropMeanSeconds} seconds or so. Scales fall onto the ground of their zone (up to ${C.zones.groundCapacity}; the oldest crumble when it is full) and must be <b>picked up by hand</b>. Collect quickly to build a combo.</p>
+      ${fig(['common', 'shimmer', 'war', 'radiant'].map((q, i) => im(SP.scaleSprite(EL[[0, 8, 4, 2][i]].color, q, false, 0, 5), '')).join('') + im(SP.scaleSprite(G.mixColor(mixV(0, 10, 6, 10)), 'common', true, 0, 5), ''), 'common · shimmering · war-marked · radiant · fractal')}
+      <table><tr><th>Quality</th><th>Comes from</th><th>Value</th><th>Needs</th></tr>
+      <tr><td>Common</td><td>any dragon</td><td>×1</td><td>Friendly</td></tr>
+      <tr><td>Shimmering</td><td>raised in its strongest element's zone</td><td>×${C.scales.quality.shimmer.factor}</td><td>Honored</td></tr>
+      <tr><td>War-marked</td><td>fought in a war</td><td>×${C.scales.quality.war.factor}</td><td>Revered</td></tr>
+      <tr><td>Radiant</td><td>king or government</td><td>×${C.scales.quality.radiant.factor}</td><td>Exalted</td></tr>
+      <tr><td>Fractal</td><td>${pct(C.scales.fractalChance)} of all drops</td><td>×${C.scales.fractalFactor}</td><td>Honored</td></tr></table>
+      <h3>Worked example</h3>
+      <p>A 4,000-year-old purebred Water dragon raised in the Water Zone drops a common scale: base ${C.scales.baseValue} × level 3 × zone 2.0 = <b>12 G</b>. If it is war-marked: <b>60 G</b>. Older dragons drop bigger scales – the level grows by one each time the age doubles.</p>
+      <p>Politics changes prices: the ruler's element sells for ×${C.scales.rulerDemand}, its arch-enemy's for ×${C.scales.rulerEnemyDemand}, and some laws take a levy.</p>` },
+    { t: 'Metal & Gem Dragons', i: 'coin', body: () => `
+      <p>Once in a while a Cheap egg hatches a dragon made entirely of metal or gemstone. It still belongs to an element and a faction, but every scale is gold, jade or diamond.</p>
+      ${fig([1, 6, 13, 18, 20].map(k => imgDragon({ id: 'bm' + k, v: pureV(k % 12), mat: k, seed: k * 31, deep: false, name: '' }, 2)).join(''), 'Copper · Jade · Sapphire · Diamond · Red Diamond')}
+      <table><tr><th>Tier</th><th>Material</th><th>Chance</th><th>Scale value</th></tr>${C.material.tiers.map((t, i) => `<tr><td>${i + 1}</td><td>${swc(t.color)} ${t.name}</td><td>1 : ${fmt(Math.round(1 / G.materialChance(i + 1)))}</td><td>×${G.matFactor(i + 1).toFixed(2)}</td></tr>`).join('')}</table>
+      <p>All tiers together: roughly one Cheap egg in 17. Every Cheap egg without material raises your <b>luck counter</b> by ${pct(C.material.luckStep)} – it resets when luck strikes. Your Bag keeps a collection of all 20 tiers for every element.</p>` },
+    { t: 'Factions & Reputation', i: 'factions', body: () => `
+      <p>Each element is a faction with its own population, needs and opinions. Their relations are lopsided – Fire may love Wind while Wind barely tolerates Fire. When both sides like each other enough they form a named <b>alliance</b> with its own colour.</p>
+      <table><tr><th>Reputation</th><th>Unlocks</th></tr>${G.REPL.slice(3).map(l => `<tr><td><b>${l.name}</b></td><td>${C.rep.unlocks[l.id] || (l.id === 'neutral' ? 'nothing yet' : '')}</td></tr>`).join('')}</table>
+      <p>Below Neutral lie Unfriendly, Hostile and Hated. At Hostile, that faction's portal slams shut.</p>
+      <h3>Every favour has a price</h3>
+      <p>Reputation spreads through the relationship web: helping Water pleases Water's friends – and angers Fire. You can never be everyone's friend, but you can be friends with enough of them.</p>
+      <p>Each faction offers three <b>activities</b>, refreshed every ${C.activities.refreshSeconds / 60} minutes:</p>
+      <table><tr><td><span class="tag" style="background:var(--green);color:#fff">neutral</span></td><td>small favours, only the target reacts</td></tr><tr><td><span class="tag" style="background:var(--red);color:#fff">war</span></td><td>a huge boost for one, everyone else is annoyed</td></tr><tr><td><span class="tag" style="background:var(--orange);color:#fff">counter</span></td><td>hurt a faction – its enemies cheer</td></tr><tr><td><span class="tag" style="background:var(--purple);color:#fff">group</span></td><td>help several factions at once</td></tr></table>` },
+    { t: 'Kings, Laws & War', i: 'crown', body: () => `
+      <p>The <b>eldest</b> dragon of the ruling faction is always the <b>Dragon King</b>. The king appoints a government – often mixed dragons, for diplomacy. Kings and ministers shed <b>radiant</b> scales. In the sky the king wears a crown and ministers a golden sash.</p>
+      <p>Age is a double-edged sword: a dragon is strongest at 1000 years and slowly weakens after (90 % strength at 10,000). Old factions are rich but brittle; young factions grow hungry.</p>
+      <h3>Laws</h3>
+      <table>${Object.keys(C.laws).map(k => `<tr><td>${elTag(G.EI[k])}</td><td><b>${C.laws[k].name}</b></td><td>${C.laws[k].text}</td></tr>`).join('')}</table>
+      <h3>War</h3>
+      <p>Each faction has four needs: <b>space, brood, honour and tribute</b>. Crowded, unhappy, uncompromising factions risk war. You will see it coming: the needs flash, the faction warns you, and the sky turns red.</p>
+      <p>The battle is one open roll: the attacker wins with chance <b>power ÷ (power + defender's power)</b>, allies counting half. The loser's king always falls. About 30 % of the losers fall, 30 % defect or flee, the rest stay as subjects. Everyone who fought is war-marked – and the fate of every dragon you raised is told one by one.</p>
+      ${tip('War is the sky\'s brake on overpopulation. A faction bursting at the seams is a faction about to fight.')}` },
+    { t: 'Portals', i: 'lock', body: () => `
+      <p>Three portals stand open at the start. The others show only a locked arch.</p>
+      ${fig(im(SP.portal([EL[8].color], 0, false, 3), '') + im(SP.portal([EL[8].color], 0, true, 3), ''), 'open · locked')}
+      <p>A portal opens by itself once you are <b>Honored</b> with its faction or one of that faction's allies. Or you pay a small fortune (${fmt(G.portalPrice())} G right now, more for each extra portal).</p>
+      <p>If a faction turns <b>Hostile</b>, its portal closes. An expensive <b>backdoor device</b> (${fmt(C.portals.backdoorPrice)} G) keeps it open – for ${C.portals.backdoorUpkeepPerMinute} G a minute, and the faction notices the smuggling: its opinion of you keeps sinking while the device runs.</p>
+      <p>Alliances can even open <b>mixed zones</b> – a brood pool shared by two elements, perfect for balanced dragons.</p>` },
+    { t: 'Keeper\'s Tips', i: 'scroll', body: () => `
+      <p><b>1.</b> Start with a handful of Cheap eggs. Hatch them in the zone closest to their likely element – examine first if you can afford it.</p>
+      <p><b>2.</b> Pair your first pupils as soon as they turn 300. More eggs now means more grown dragons in 17 minutes.</p>
+      <p><b>3.</b> Every faction you raise a dragon for opens a new stream of scales. Spread your dragons out.</p>
+      <p><b>4.</b> Two purebred parents of one element breed purebred forever – a gold mine, until the merchant gets sick of that element.</p>
+      <p><b>5.</b> Watch the sky. A thick band of one colour in the bar at its bottom is a faction that will soon go to war.</p>
+      <p><b>6.</b> Everything random is logged. If luck feels cruel, check the <b>Log</b>: the clutch statistics compare every roll with the exact expected odds.</p>
+      <p class="mute"><small>Still open in the design (placeholders): brood time, the hatcheries of most zones, worldviews other than Fire, faction voices, music, alliance names, the breeding boost after 1000 years.</small></p>
+      <div class="row"><span class="spacer"></span><button class="btn small danger" type="button" data-act="reset">Delete save</button></div>` },
+  ];
+  function helpModal(page) {
+    ui.bookPage = page != null ? page : (ui.bookPage || 0);
     showModal({
-      html: `<h2>How to play Dragonle</h2>
-      <p><b>1 game year = 1 second.</b> Things only happen while you play. Offline, only adult dragons keep ageing.</p>
-      <p><b>Eggs</b> come from the Market. Cheap eggs are random mixes and the only source of metal and gem dragons. Every bought egg can be a dud – then the shell is refunded.</p>
-      <p><b>Examine:</b> at the School the magnifier shows three uncertain candidates and a vague riddle. Pick a label. A hit after hatching earns school reputation, which makes riddles clearer. The riddle language is consistent – learn it.</p>
-      <p><b>Incubate</b> in a zone (${C.incubation.seconds} s). You trigger the last crack yourself. In the zone of its own element a dragon reaches its potential: scale value ×(1 + share).</p>
-      <p><b>Dragon School:</b> a level every 10 years, mature at 300, adult at 1000 (≈ 17 min). Then the zone imprints it, it picks its own faction and takes to the sky.</p>
-      <p><b>Nest:</b> pairs of 300+ years breed on average every 50 years. Four open rolls decide the clutch (gate 0–6, then x, y, z). Two purebred parents of the same element always breed purebred.</p>
-      <p><b>Scales</b> fall from adult dragons onto the ground of their zone. You may collect them once you are Friendly with their faction (rarer qualities need more reputation).</p>
-      <p><b>Factions</b> have relations, alliances, needs and wars. The eldest dragon of the ruling faction is king. Court them with activities – helping some angers others.</p>
-      <p><small>Placeholders (still open): brood time, hatcheries other than lava pool and ember oven, worldviews other than Fire, faction voices, tutorial, music, alliance names, the boost from 1000 years.</small></p>
-      <div class="row"><span class="spacer"></span><button class="btn small danger" type="button" data-act="reset">Delete save</button></div>`,
+      wide: true,
+      rebuild() {
+        const i = ui.bookPage; const ch = CHAPTERS[i];
+        return `<h2>${icon('scroll', 3)} The Keeper's Handbook</h2><div class="book">
+          <div class="toc">${CHAPTERS.map((c, k) => `<button class="btn small ${k === i ? 'on' : ''}" type="button" data-act="book" data-id="${k}">${icon(c.i)} ${c.t}</button>`).join('')}</div>
+          <div class="page panel alt"><div class="chapno">CHAPTER ${i + 1} OF ${CHAPTERS.length}</div><h2 style="font-size:20px">${ch.t}</h2>${ch.body()}
+            <div class="pager">${i > 0 ? `<button class="btn small ghost" type="button" data-act="book" data-id="${i - 1}">◀ ${CHAPTERS[i - 1].t}</button>` : '<span></span>'}${i < CHAPTERS.length - 1 ? `<button class="btn small" type="button" data-act="book" data-id="${i + 1}">${CHAPTERS[i + 1].t} ▶</button>` : ''}</div></div></div>`;
+      },
+      build(b) { b.innerHTML = this.rebuild(); },
     }, true);
   }
 
@@ -856,34 +981,62 @@
     c.fillStyle = SP.INK; c.fillRect(mx + 1, my - 1, 10, 14); c.fillRect(mx - 1, my + 1, 14, 10); c.fillRect(mx, my, 12, 12);
     c.fillStyle = tension > 0.5 ? '#ff9a7a' : '#fff3c4'; c.fillRect(mx + 2, my, 8, 12); c.fillRect(mx, my + 2, 12, 8); c.fillRect(mx + 1, my + 1, 10, 10);
     c.fillStyle = tension > 0.5 ? '#e07a5a' : '#e8d9a0'; c.fillRect(mx + 3, my + 3, 2, 2); c.fillRect(mx + 7, my + 6, 2, 2); c.fillRect(mx + 4, my + 8, 1, 1);
-    // dragons in their faction colours
+    // dragons in their faction colours – a proportional sample, government always shown
     const adults = [];
     for (let f = 0; f < NE; f++) G.adultsOf(f).forEach(d => adults.push(d));
-    adults.sort((a, b) => a.id - b.id);
-    adults.slice(-70).forEach((d, i) => {
+    const shown = skySample(adults, 64);
+    shown.forEach((d, i) => {
       const sd = d.seed;
-      const speed = 4 + (sd % 100) / 12;
+      const vip = d.role === 'king' || d.role === 'gov';
+      const speed = vip ? 3 : 4 + (sd % 100) / 12;
       const dir = sd % 2 ? 1 : -1;
       const span = w + 60;
       let x = ((time * speed + (sd % 997)) % span); if (dir < 0) x = span - x; x -= 30;
-      const y = 1 + ((sd >>> 3) % Math.max(1, h - 24)) + Math.sin(time * 1.3 + sd) * 2;
+      const y = 1 + ((sd >>> 3) % Math.max(1, h - 28)) + Math.sin(time * 1.3 + sd) * 2;
       const frame = Math.floor(time * 3 + sd) % 2;
       let col = EL[d.faction].color;
       if (war && war.phase === 'fight' && (d.faction === war.attacker || d.faction === war.defender) && Math.floor(time * 6 + i) % 7 === 0) col = '#ffffff';
-      c.drawImage(SP.skyDragon(col, frame, dir < 0, d.role === 'king', d.mat), Math.round(x), Math.round(y));
+      c.drawImage(SP.skyDragon(col, frame, dir < 0, d.role === 'king', d.mat, d.role === 'gov'), Math.round(x), Math.round(y));
     });
     // hills
     c.fillStyle = tension > 0 ? '#16060c' : '#120a26';
     for (let x = 0; x < w; x++) { const hh = 6 + Math.round(Math.abs(Math.sin(x * 0.07) * 6 + Math.sin(x * 0.023 + 1) * 5)); c.fillRect(x, h - hh, 1, hh); }
     c.fillStyle = '#000';
     for (let x = 0; x < w; x++) { const hh = 6 + Math.round(Math.abs(Math.sin(x * 0.07) * 6 + Math.sin(x * 0.023 + 1) * 5)); c.fillRect(x, h - hh - 1, 1, 1); }
+    // population share bar
+    const total = adults.length || 1; let bx = 0;
+    c.fillStyle = '#000'; c.fillRect(0, h - 4, w, 4);
+    for (let f = 0; f < NE; f++) {
+      const n = G.adultsOf(f).length; if (!n) continue;
+      const bw = Math.max(1, Math.round(n / total * w));
+      c.fillStyle = EL[f].color; c.fillRect(bx, h - 3, bw, 3);
+      if (f === S.ruler) { c.fillStyle = '#ffd23f'; c.fillRect(bx, h - 4, bw, 1); }
+      bx += bw; c.fillStyle = '#000'; c.fillRect(bx - 1, h - 3, 1, 3);
+    }
     const info = $('#sky-info');
-    const txt = `${adults.length} dragons in the sky${S.king && S.dragons[S.king] ? ' · ♛ ' + S.dragons[S.king].name + ' (' + elName(S.ruler) + ')' : ''}`;
+    const txt = `${adults.length} dragons in the sky${adults.length > shown.length ? ' (' + shown.length + ' shown to scale)' : ''}${S.king && S.dragons[S.king] ? ' · ♛ ' + S.dragons[S.king].name + ' + ' + S.gov.length + ' ministers (' + elName(S.ruler) + ')' : ''}`;
     if (info.textContent !== txt) info.textContent = txt;
     const tn = $('#tension');
     if (war) { tn.hidden = false; tn.querySelector('.tension-label').textContent = (war.phase === 'announce' ? 'WAR THREAT: ' : 'WAR: ') + elName(war.attacker).toUpperCase() + ' vs ' + elName(war.defender).toUpperCase(); tn.querySelector('i').style.width = (war.phase === 'announce' ? tension * 100 : 100 - war.t / (war.fight || C.war.fightSeconds) * 100) + '%'; }
     else tn.hidden = true;
     document.querySelector('.sky-wrap').classList.toggle('war', !!(war && war.phase === 'fight'));
+  }
+
+  // largest-remainder sample: each faction keeps its share of the sky; king & government always fly
+  function skySample(adults, cap) {
+    const by = Array.from({ length: NE }, () => []);
+    adults.forEach(d => by[d.faction].push(d));
+    const rank = d => (d.role === 'king' ? 0 : d.role === 'gov' ? 1 : 2);
+    by.forEach(l => l.sort((a, b) => rank(a) - rank(b) || a.id - b.id));
+    let out = [];
+    if (adults.length <= cap) out = adults.slice();
+    else {
+      const q = by.map(l => l.length * cap / adults.length);
+      const n = q.map(Math.floor); let left = cap - n.reduce((a, b) => a + b, 0);
+      q.map((x, f) => [x - Math.floor(x), f]).sort((a, b) => b[0] - a[0]).forEach(([, f]) => { if (left > 0 && n[f] < by[f].length) { n[f]++; left--; } });
+      by.forEach((l, f) => { const vip = l.filter(d => d.role).length; out = out.concat(l.slice(0, Math.max(n[f], vip))); });
+    }
+    return out.sort((a, b) => rank(b) - rank(a) || a.id - b.id); // VIPs drawn last = in front
   }
 
   // ------------------------------------------------------------ main loop
@@ -909,7 +1062,7 @@
   $('#btn-help').innerHTML = icon('help', 2);
   boot();
   render(true); updateTop();
-  if (ui.first) showModal({ html: `<h2>Welcome to Dragonle!</h2><div class="reveal"><div class="hero">${im(SP.egg({ shell: '#F2CF5B', spots: '#B8902A', seed: 5, crack: 1 }, 8), '')}</div></div><p>A dragon world of twelve elements. It's all about <b>eggs and young dragons</b> – the grown-ups only show up as shapes in the sky, wearing their faction's colours.</p><p>Buy an egg at the <b>Market</b>, hatch it in a <b>zone</b> and raise the dragon at the <b>School</b>.</p><div class="row" style="justify-content:center"><button class="btn" type="button" data-act="nav" data-id="market">${icon('market')} To the Market</button><button class="btn ghost" type="button" data-act="help">How to play</button></div>` });
+  if (ui.first) showModal({ html: `<h2>Welcome to Dragonle!</h2><div class="reveal">${hero(im(SP.egg({ shell: '#F2CF5B', spots: '#B8902A', seed: 5, crack: 1 }, 7), ''))}</div><p>A dragon world of twelve elements. It's all about <b>eggs and young dragons</b> – the grown-ups only show up as shapes in the sky, wearing their faction's colours.</p><p>Buy an egg at the <b>Market</b>, hatch it in a <b>zone</b> and raise the dragon at the <b>School</b>.</p><div class="row" style="justify-content:center"><button class="btn" type="button" data-act="nav" data-id="market">${icon('market')} To the Market</button><button class="btn ghost" type="button" data-act="help">How to play</button></div>` });
   requestAnimationFrame(frame);
   window.DragonleUI = { ui, render };
 })();

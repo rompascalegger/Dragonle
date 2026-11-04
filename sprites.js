@@ -48,31 +48,104 @@
   // ------------------------------------------------------------ dragon (retro side view)
   // o outline (dark shade) · S scale · s scale shade · W wing membrane · w wing bone
   // B belly · b belly shade · E eye · H horn · h horn shade · T claw/teeth · N nostril · m mouth
-  const DRAGON = [
-    '................................',
-    '..o.....................oo......',
-    '..oo...................oHo..oo..',
-    '..owo.................oHo..oHo..',
-    '..oWwo...............oSSoooHo...',
-    '..oWWwoo............oSSSSSSSo...',
-    '..oWWWwwoo.........oSSSSSESSSo..',
-    '..oWwWWWwwoo.......oSSSSSSSSSSo.',
-    '..oWwWWwWWwwo.....oSSSoSSSSSSSNo',
-    '..oWwWWwWWWWwo...oSSSo.oommmmoo.',
-    '...oWwWWwWWWWwo.oSSSo..oTTo.....',
-    '...oWoWWoWWWWWwoSSSo............',
-    '....o.oo.ooWWWwSSSo.............',
-    '..........oSSwSSSo..............',
-    '.........oSSSSSSSSo.............',
-    '...ooo..oSSSSBBBSSSo............',
-    '..oSSso.oSSSBBBBBSSSo...........',
-    '..oSo.ooSSSSBBBBBSSso...........',
-    '...oSSSSSSSSSBBBSSsso...........',
-    '....oosSSSSSSSSSsssoo...........',
-    '......oossooooossooo............',
-    '.......oTTo...oTTo..............',
+  // Four body types, picked per dragon from its seed.
+  const BODIES = [
+    { name: 'Long-neck drake', rows: [
+      '..............................',
+      '......................oo......',
+      '.....................oHo..oo..',
+      '..........oo........oHo..oHo..',
+      '.........oWWo......oSSoooHo...',
+      '........oWwWWo....oSSSSSSSo...',
+      '.......oWwwwWWo..oSSSSSESSSo..',
+      '......oWwwwwwWWooSSSSSSSSSSo..',
+      '.....oWwwwwwwwWoSSSSoooSSSSSo.',
+      '....oWwwwwwwwwWoSSSo...ossssNo',
+      '...oWwwwwwwwwWoSSSo.....oTTo..',
+      '...oWWWWWWWWWoSSSSo...........',
+      '....oooooooooSSSSSo...........',
+      '..........ooSSSSSSSoo.........',
+      '....oo...oSSSBBBSSSSSo........',
+      '...oSSo.oSSSBBBBBSSSSo........',
+      '...oSsooSSSBBBBBBSSSSo........',
+      '....oSSSSSSBBBBBSSSSso........',
+      '.....ossSSSSBBBSSSssso........',
+      '......oooSSooooSSoooo.........',
+      '........oSTo..oSTo............',
+      '.........oo....oo.............',
+    ] },
+    { name: 'Bat-wing dragon', rows: [
+      '................................',
+      '..o.....................oo......',
+      '..oo...................oHo..oo..',
+      '..owo.................oHo..oHo..',
+      '..oWwo...............oSSoooHo...',
+      '..oWWwoo............oSSSSSSSo...',
+      '..oWWWwwoo.........oSSSSSESSSo..',
+      '..oWwWWWwwoo.......oSSSSSSSSSSo.',
+      '..oWwWWwWWwwo.....oSSSoSSSSSSSNo',
+      '..oWwWWwWWWWwo...oSSSo.oommmmoo.',
+      '...oWwWWwWWWWwo.oSSSo..oTTo.....',
+      '...oWoWWoWWWWWwoSSSo............',
+      '....o.oo.ooWWWwSSSo.............',
+      '..........oSSwSSSo..............',
+      '.........oSSSSSSSSo.............',
+      '...ooo..oSSSSBBBSSSo............',
+      '..oSSso.oSSSBBBBBSSSo...........',
+      '..oSo.ooSSSSBBBBBSSso...........',
+      '...oSSSSSSSSSBBBSSsso...........',
+      '....oosSSSSSSSSSsssoo...........',
+      '......oossooooossooo............',
+      '.......oTTo...oTTo..............',
+    ] },
+    { name: 'Wyrm', rows: [
+      '................................',
+      '........................oo.oo...',
+      '.......................oHooHo...',
+      '......................oSSSSSo...',
+      '.....................oSSSESSSo..',
+      '.....................oSSSSSSSNo.',
+      '..........oooo......oSSSoommmo..',
+      '........ooSSSSoo...oSSSo.oTTo...',
+      '.......oSSSSSSSSo.oSSSo.........',
+      '......oSSSBBBBSSSoSSSSo.........',
+      '.....oSSSBooooBSSSSSSo..........',
+      '....oSSSBo....oBBSSSo...........',
+      '...oSSSBo......ooooo............',
+      '..oSSSBo........................',
+      '..oSSBBo...........ooo..........',
+      '...oSSSBoooo....ooSSSSo.........',
+      '....oSSSSSSSooooSSSSBBo.........',
+      '.....ooSSSSSSSSSSSBBBo..........',
+      '.......ooooSSSSSSBBoo...........',
+      '...........ooooooo..............',
+    ] },
+    { name: 'Wyvern', rows: [
+      '................................',
+      '......o.........o...............',
+      '.....owo.......owo......oo.oo...',
+      '....oWwo......oWwo.....oHooHo...',
+      '...oWWwo.....oWWwo....oSSSSSSo..',
+      '..oWWWwo....oWWWwo...oSSSSESSSo.',
+      '..oWWwWo...oWWwWWo...oSSSSSSSSNo',
+      '.oWWwWWo..oWWwWWWo..oSSSoommmmo.',
+      '.oWwWWWwooWwWWWWwo.oSSSo.oTTo...',
+      '..ooWWWWwwWWWWWwwooSSSo.........',
+      '....oooWWWWWWwwoSSSSSo..........',
+      '.......ooooooSSSSSSSo...........',
+      '..........oSSSSBBBSSSo..........',
+      '...ooo...oSSSSBBBBBSSo..........',
+      '..oSSso.oSSSSBBBBBSSSo..........',
+      '..oSo.ooSSSSSSBBBSSSso..........',
+      '...oSSSSSSSSSSSSSSssso..........',
+      '....ooossSSSSSSsssooo...........',
+      '.......oossoooossoo.............',
+      '........oTTo..oTTo..............',
+    ] },
   ];
-  const DW = 32;
+  BODIES.forEach(bd => { bd.w = Math.max(...bd.rows.map(r => r.length)); });
+  function bodyOf(d) { const n = typeof d.seed === 'number' ? d.seed : 0; return BODIES[((n >>> 4) % BODIES.length + BODIES.length) % BODIES.length]; }
+  function variantName(d) { return bodyOf(d).name; }
   function scaleColours(d, count) {
     const EL = G.EL; const v = d.v; const r = rng(d.seed);
     if (d.mat) {
@@ -90,15 +163,18 @@
   }
   function dragonGrid(d, flip) {
     const cells = [];
-    DRAGON.forEach((row, y) => { for (let x = 0; x < row.length; x++) if ('SsWw'.includes(row[x])) cells.push([x, y, row[x]]); });
+    const body = bodyOf(d); const ROWS = body.rows; const DW = body.w;
+    ROWS.forEach((row, y) => { for (let x = 0; x < row.length; x++) if ('SsWw'.includes(row[x])) cells.push([x, y, row[x]]); });
     const cols = scaleColours(d, cells.length);
     const base = d.mat ? G.C.material.tiers[d.mat - 1].color : G.mixColor(d.v);
     const lum = hexRgb(base).reduce((a, b) => a + b, 0) / 3;
     const line = lum < 60 ? '#06040a' : shade(base, 0.3);
     const belly = mix(base, '#f4e6c0', 0.55);
-    const g = grid(DW, DRAGON.length);
+    const g = grid(DW, 22);
+    const yOff = 22 - ROWS.length;
     const X = x => (flip ? DW - 1 - x : x);
-    DRAGON.forEach((row, y) => {
+    ROWS.forEach((row, y0) => {
+      const y = y0 + yOff;
       for (let x = 0; x < row.length; x++) {
         const ch = row[x]; let c = null;
         if (ch === 'o' || ch === 'm') c = line;
@@ -117,7 +193,7 @@
       if (p[2] === 's') c = shade(c, 0.7);
       else if (p[2] === 'W') c = mix(shade(c, 0.9), '#f4e6c0', 0.25);
       else if (p[2] === 'w') c = shade(c, 0.6);
-      set(g, X(p[0]), p[1], c);
+      set(g, X(p[0]), p[1] + yOff, c);
     });
     return g;
   }
@@ -354,18 +430,19 @@
     ['..........FF...........', '.........FFF...........', '........FFFF...........', '.......FFFFF...........', '......FFFFFF.......FF..', 'FF...FFFFFFFFFFFFFFFEF.', '.FFFFFFFFFFFFFFFFFFFFFF', '...FFFFFFFFFFFFFbb.....', '.......FF....FF........', '.......................', '.......................'],
     ['.......................', '.......................', '.......................', '.......................', '...................FF..', 'FF...FFFFFFFFFFFFFFFEF.', '.FFFFFFFFFFFFFFFFFFFFFF', '...FFFFFFFFFFFFFbb.....', '.....FFFFFFFF.FF.......', '......FFFFF............', '.......FF..............'],
   ];
-  function skyDragon(color, frame, flip, king, mat) {
-    return cached('sky|' + color + '|' + frame + '|' + (flip ? 1 : 0) + '|' + (king ? 1 : 0) + '|' + (mat || 0), () => {
+  function skyDragon(color, frame, flip, king, mat, gov) {
+    return cached('sky|' + color + '|' + frame + '|' + (flip ? 1 : 0) + '|' + (king ? 1 : 0) + '|' + (mat || 0) + '|' + (gov ? 1 : 0), () => {
       const rows = SIL[frame];
       const g = grid(25, 14);
       const lum = hexRgb(color).reduce((a, b) => a + b, 0) / 3; if (lum < 50) color = shade(color, 1.45);
       rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) { const ch = row[x]; if (ch === '.') continue; const xx = 1 + (flip ? 22 - x : x); const c = ch === 'E' ? '#FFFFFF' : ch === 'b' ? shade(color, 1.35) : (y < 4 ? shade(color, 1.18) : y > 6 ? shade(color, 0.72) : color); set(g, xx, y + 1, c); } });
       if (mat) { set(g, flip ? 12 : 12, 5, '#FFFFFF'); }
+      if (gov) { for (let x = 9; x <= 12; x++) set(g, 1 + (flip ? 22 - x : x), 7, '#FFD23F'); }
       if (king) { const kx = flip ? 3 : 21; set(g, kx - 1, 1, '#FFD23F'); set(g, kx, 0, '#FFD23F'); set(g, kx + 1, 1, '#FFD23F'); set(g, kx, 1, '#FFD23F'); }
       outline(g);
       return toCanvas(g, 1);
     });
   }
 
-  root.Sprites = { dragon, egg, nest, burst, scaleSprite, scaleColor, portal, hatchery, icon, iconImg, skyDragon, shade, mix, INK };
+  root.Sprites = { dragon, variantName, egg, nest, burst, scaleSprite, scaleColor, portal, hatchery, icon, iconImg, skyDragon, shade, mix, INK };
 })(window);

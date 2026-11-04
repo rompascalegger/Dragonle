@@ -13,7 +13,7 @@ const G = Dragonle, SP = Sprites; G.init(5);
 const out = document.getElementById('out');
 const img = o => `<img src="${o.src}" width="${o.w}" height="${o.h}">`;
 const vs = [[20,0,0,0,0,0,0,0,0,0,0,0],[0,20,0,0,0,0,0,0,0,0,0,0],[8,0,0,0,12,0,0,0,0,0,0,0],[0,0,0,20,0,0,0,0,0,0,0,0],[0,0,20,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,5,0,5,0,10,0],[0,0,0,0,0,0,0,20,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,20]];
-let h = '<div class="row">' + vs.map((v, i) => img(SP.dragon({ id: i, v, mat: 0, seed: i * 99, deep: false }, 5))).join('') + '</div>';
+let h = '<div class="row">' + vs.map((v, i) => img(SP.dragon({ id: i, v, mat: 0, seed: i * 16 + 3, deep: false }, 5))).join('') + '</div>';
 h += '<div class="row">' + [1, 6, 11, 18, 20].map(m => img(SP.dragon({ id: 'm' + m, v: vs[0], mat: m, seed: m, deep: false }, 5))).join('') + img(SP.dragon({ id: 'deep', v: vs[2], mat: 0, seed: 3, deep: true }, 5)) + '</div>';
 h += '<div class="row">' + G.C.eggClasses.map((c, i) => [0, 1, 2, 3].map(k => img(SP.egg({ shell: c.shell, spots: c.spots, seed: i + 1, crack: k }, 5))).join('')).join('') + '</div>';
 h += '<div class="row">' + G.EL.map((e, i) => img(SP.scaleSprite(e.color, ['common', 'shimmer', 'war', 'radiant'][i % 4], i % 5 === 0, 0, 5))).join('') + '</div>';
