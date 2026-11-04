@@ -31,10 +31,14 @@
   }
 
   const dt = 0.5;
-  let wars = 0, eggsBought = 0;
+  let wars = 0, eggsBought = 0, sideSum = 0, allied = 0, fallen = 0, reformed = 0;
   for (let t = 0; t < hours * 3600; t += dt) {
     G.tick(dt);
-    for (const e of G.drain()) if (e.type === 'warResult') wars++;
+    for (const e of G.drain()) {
+      if (e.type === 'warResult') { wars++; sideSum += (e.sa || [1]).length + (e.sd || [1]).length; if (Math.max((e.sa || []).length, (e.sd || []).length) > 1) allied++; }
+      if (e.type === 'factionFallen') fallen++;
+      if (e.type === 'factionReformed') reformed++;
+    }
     if (t % 5 !== 0) continue;
     const s = S();
     for (const id in s.zones) { const z = s.zones[id]; if (!G.zoneOpen(z)) continue; z.ground.slice().forEach(sc => { if (G.canCollect(sc)) G.collect(id, sc.id); }); }
@@ -70,6 +74,7 @@
     log(`--- hour ${h}: gold ${Math.round(s.gold)} (earned ${s.stats.gold}), hatched ${s.stats.hatched} (duds ${s.stats.duds}), eggs bought ${eggsBought}, wars ${wars}, materials ${mats}, scales ${s.stats.scales}`);
     log('    population ' + pop + ' | ruler ' + G.EL[s.ruler].name + ' | pupils ' + G.list(d => d.status === 'school').length + ' | wild young ' + G.list(d => d.status === 'wild').length);
     log('    reputation ' + reps + ' | portals open ' + Object.values(s.zones).filter(z => z.unlocked).length + ' | school rep ' + s.schoolRep);
+    log('    wars with allies ' + allied + '/' + wars + ' · avg factions per war ' + (wars ? (sideSum / wars).toFixed(1) : '0') + ' · fallen ' + fallen + ' · reformed ' + reformed + ' · in exile ' + G.list(d => d.status === 'exile').length + ' · ended now: ' + (G.EL.filter((e, f) => G.S.factions[f].ended).map(e => e.name).join(', ') || 'none'));
   }
   if (!inNode) { const pre = document.getElementById('out'); if (pre) pre.textContent = out.join('\n'); window.SIM_OUT = out; }
 })();

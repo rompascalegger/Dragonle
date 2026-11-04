@@ -310,6 +310,7 @@ table.list td { padding: 5px 6px; border-bottom: 2px dashed rgba(27,16,36,.2); v
 .burstbox > img { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 .burstbox > img.f1 { animation: swap .5s steps(1) infinite; }
 .burstbox > span { position: relative; }
+.burstbox > .fanfare.long { font-size: 15px; max-width: 130px; text-align: center; line-height: 1.25; }
 
 /* ---------------------------------------------------------------- handbook */
 .book { display: grid; grid-template-columns: 190px 1fr; gap: 16px; }

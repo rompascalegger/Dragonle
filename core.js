@@ -46,7 +46,7 @@
   const enemyOf = i => i ^ 1;
   const isEnemy = (a, b) => (a ^ 1) === b;
   function now() { return Date.now() / 1000 + S.worldOffset; }
-  function ageOf(d) { return d.status === 'adult' ? C.time.adultAge + (now() - d.t1000) : d.age; }
+  function ageOf(d) { return (d.status === 'adult' || d.status === 'exile') && d.t1000 != null ? C.time.adultAge + (now() - d.t1000) : d.age; }
   function strength(d) { return Math.exp(-(ageOf(d) - C.time.adultAge) / C.war.tau); }
   function dominants(v) { let m = -1; const out = []; for (let i = 0; i < NE; i++) { if (v[i] > m) { m = v[i]; out.length = 0; out.push(i); } else if (v[i] === m) out.push(i); } return out; }
   function dominant(v) { return dominants(v)[0]; }
@@ -542,6 +542,7 @@
     }
     d.status = 'adult'; d.faction = f; d.owned = false; d.raised = true;
     d.t1000 = now() - (d.age - C.time.adultAge);
+    if (S.factions[f].ended) reformFaction(f, d.name + ' raises its banner again', d);
     dirty();
     let firstAccess = false;
     if (!S.access[f]) {
@@ -774,15 +775,31 @@
   }
 
   // ------------------------------------------------------------ War
-  function warPower(f, exclude) {
-    let p = factionPower(f); const parts = [f];
-    allies(f).forEach(a => { if (a !== exclude) { p += C.war.allyWeight * factionPower(a); parts.push(a); } });
-    return { p, parts };
+  // Alliances always help each other: every ally of a leader joins its side at full strength.
+  function warSides(A, D) {
+    const sa = [A], sd = [D];
+    for (let f = 0; f < NE; f++) {
+      if (f === A || f === D || S.factions[f].ended || !adultsOf(f).length) continue;
+      const withA = allied(f, A), withD = allied(f, D);
+      if (withA && withD) (S.rel[f][A] >= S.rel[f][D] ? sa : sd).push(f);
+      else if (withA) sa.push(f);
+      else if (withD) sd.push(f);
+    }
+    return { sa, sd };
   }
+  function sidePower(side, leader) {
+    return side.reduce((p, f) => p + factionPower(f) * (f === leader ? 1 : C.war.allyWeight), 0);
+  }
+  const sideName = side => side.map(f => EL[f].name).join(' + ');
   function updateWar(dt) {
     if (S.war) {
       const W = S.war; W.t += dt;
-      if (W.phase === 'announce' && W.t >= C.war.announceSeconds) { W.phase = 'fight'; W.t = 0; emit('warFight', {}); }
+      if (!W.sa) { const sides = warSides(W.attacker, W.defender); W.sa = sides.sa; W.sd = sides.sd; }
+      if (W.phase === 'announce' && W.t >= C.war.announceSeconds) {
+        // allies who formed an alliance during the threat still rally to their friends
+        const sides = warSides(W.attacker, W.defender); W.sa = sides.sa; W.sd = sides.sd;
+        W.phase = 'fight'; W.t = 0; emit('warFight', { sa: W.sa, sd: W.sd });
+      }
       else if (W.phase === 'fight' && W.t >= (W.fight || C.war.fightSeconds)) resolveWar();
       return;
     }
@@ -797,61 +814,135 @@
       }
       if (R() < risk * C.war.baseRate * dt) {
         let def = S.ruler;
-        if (f === S.ruler) {
+        if (f === S.ruler || allied(f, S.ruler)) {
           let worst = 1e9; def = -1;
-          for (let g = 0; g < NE; g++) if (g !== f && adultsOf(g).length && S.rel[f][g] < worst) { worst = S.rel[f][g]; def = g; }
+          for (let g = 0; g < NE; g++) if (g !== f && !allied(f, g) && adultsOf(g).length && S.rel[f][g] < worst) { worst = S.rel[f][g]; def = g; }
         }
         if (def < 0 || def === f) continue;
         let total = 0; for (let g = 0; g < NE; g++) total += adultsOf(g).length;
         const pressure = Math.max(1, total / (C.factions.capacity * NE));
-        S.war = { phase: 'announce', t: 0, attacker: f, defender: def, fight: Math.max(C.war.fightSecondsMin, C.war.fightSeconds / pressure) };
-        logEvent(C.speech.war.replace('{a}', EL[f].name).replace('{b}', EL[def].name), 'war');
-        emit('warAnnounce', { attacker: f, defender: def });
+        const sides = warSides(f, def);
+        S.war = { phase: 'announce', t: 0, attacker: f, defender: def, sa: sides.sa, sd: sides.sd, fight: Math.max(C.war.fightSecondsMin, C.war.fightSeconds / pressure) };
+        logEvent(C.speech.war.replace('{a}', sideName(sides.sa)).replace('{b}', sideName(sides.sd)), 'war');
+        emit('warAnnounce', { attacker: f, defender: def, sa: sides.sa, sd: sides.sd });
         return;
       }
     }
   }
   function resolveWar() {
     const W = S.war; const A = W.attacker, D = W.defender;
-    const pa = warPower(A, D), pd = warPower(D, A);
-    const chance = pa.p + pd.p > 0 ? pa.p / (pa.p + pd.p) : 0.5;
+    const sa = (W.sa || [A]).filter(f => !S.factions[f].ended), sd = (W.sd || [D]).filter(f => !S.factions[f].ended);
+    const pa = sidePower(sa, A), pd = sidePower(sd, D);
+    const chance = pa + pd > 0 ? pa / (pa + pd) : 0.5;
     const roll = R();
-    logRoll('War ' + EL[A].name + ' vs ' + EL[D].name, Math.round(roll * 1000) / 1000, '< ' + chance.toFixed(3) + ' = attacker wins');
+    logRoll('War ' + sideName(sa) + ' vs ' + sideName(sd), Math.round(roll * 1000) / 1000, '< ' + chance.toFixed(3) + ' = attackers win');
     const attackerWins = roll < chance;
     const winner = attackerWins ? A : D, loser = attackerWins ? D : A;
+    const wside = attackerWins ? sa : sd, lside = attackerWins ? sd : sa;
     // all participants become war-marked
-    pa.parts.concat(pd.parts).forEach(f => adultsOf(f).forEach(d => { d.war = true; }));
-    const fates = [];
-    const loserKing = loser === S.ruler && S.king ? S.dragons[S.king] : eldest(loser);
-    adultsOf(loser).forEach(d => {
-      let fate;
-      if (d === loserKing) fate = 'fallen';
-      else {
-        const r = R();
-        if (r < C.war.loserDie) fate = 'fallen';
-        else if (r < C.war.loserDie + C.war.loserDefect) fate = d.v[winner] > 0 ? 'defect' : 'fled';
-        else fate = 'stay';
-      }
-      if (d.raised) fates.push({ id: d.id, name: d.name, fate, v: d.v.slice(), mat: d.mat, seed: d.seed });
-      if (fate === 'fallen') removeDragon(d, 'dead');
-      else if (fate === 'fled') removeDragon(d, 'fled');
-      else if (fate === 'defect') { d.faction = winner; d.zone = EL[winner].id; dirty(); }
+    sa.concat(sd).forEach(f => adultsOf(f).forEach(d => { d.war = true; }));
+    const fates = []; const losses = {};
+    lside.forEach(f => {
+      const lead = f === loser;
+      const die = lead ? C.war.loserDie : C.war.allyLoserDie;
+      const defect = lead ? C.war.loserDefect : C.war.allyLoserDefect;
+      const king = f === S.ruler && S.king ? S.dragons[S.king] : eldest(f);
+      losses[f] = { fallen: 0, defect: 0, fled: 0 };
+      adultsOf(f).slice().forEach(d => {
+        let fate;
+        if (lead && d === king) fate = 'fallen';
+        else {
+          const r = R();
+          if (r < die) fate = 'fallen';
+          else if (r < die + defect) fate = wside.some(w => d.v[w] > 0) ? 'defect' : 'fled';
+          else fate = 'stay';
+        }
+        if (d.raised) fates.push({ id: d.id, name: d.name, fate, f, v: d.v.slice(), mat: d.mat, seed: d.seed });
+        if (fate === 'fallen') { losses[f].fallen++; removeDragon(d, 'dead'); }
+        else if (fate === 'fled') { losses[f].fled++; exile(d); }
+        else if (fate === 'defect') {
+          losses[f].defect++;
+          const to = wside.filter(w => d.v[w] > 0).sort((x, y) => d.v[y] - d.v[x])[0];
+          d.faction = to; d.zone = EL[to].id; if (d.role) { d.role = null; S.gov = S.gov.filter(x => x !== d.id); } dirty();
+        }
+      });
     });
-    S.factions[winner].needs.ehre = Math.min(100, S.factions[winner].needs.ehre + C.war.ehreSwing);
-    S.factions[loser].needs.ehre = Math.max(0, S.factions[loser].needs.ehre - C.war.ehreSwing);
-    S.factions[winner].wins++; S.factions[loser].losses++;
+    wside.forEach(f => { S.factions[f].needs.ehre = Math.min(100, S.factions[f].needs.ehre + C.war.ehreSwing); S.factions[f].wins++; });
+    lside.forEach(f => { S.factions[f].needs.ehre = Math.max(0, S.factions[f].needs.ehre - C.war.ehreSwing); S.factions[f].losses++; });
+    // after the war the factions re-form their politics
     changeRel(A, D, -C.war.relationHit);
+    wside.forEach(x => wside.forEach(y => { if (x < y) changeRel(x, y, C.war.victoryBond); }));
+    lside.forEach(x => lside.forEach(y => { if (x < y) changeRel(x, y, -C.war.defeatStrain); }));
+    wside.forEach(x => lside.forEach(y => changeRel(y, x, -C.war.relationHit / 2, false)));
     let newRuler = false;
-    if (attackerWins && D === S.ruler) { setRuler(A, 'war won'); newRuler = true; }
+    if (lside.includes(S.ruler)) { setRuler(winner, 'war won'); newRuler = true; }
+    // factions that are too small collapse
+    const collapsed = [];
+    lside.forEach(f => { if (adultsOf(f).length < C.war.collapseBelow) { endFaction(f, 'lost the war'); collapsed.push(f); } });
     S.stats.wars++;
-    const res = { attacker: A, defender: D, chance, roll, attackerWins, winner, loser, fates, newRuler, pa: pa.p, pd: pd.p, t: Math.round(S.played) };
+    const res = { attacker: A, defender: D, sa, sd, chance, roll, attackerWins, winner, loser, wside, lside, losses, collapsed, fates, newRuler, pa, pd, t: Math.round(S.played) };
     S.logs.wars.unshift(res); if (S.logs.wars.length > 50) S.logs.wars.length = 50;
     let total = 0; for (let f = 0; f < NE; f++) total += adultsOf(f).length;
     const pressure = Math.max(1, total / (C.factions.capacity * NE));
     S.war = null; S.warCooldown = C.war.cooldownSeconds / Math.pow(pressure, C.war.cooldownPressureExp);
-    logEvent('War: ' + EL[winner].name + ' defeats ' + EL[loser].name, 'war');
+    logEvent('War: ' + sideName(wside) + ' defeat ' + sideName(lside), 'war');
     updateRoles(false);
     emit('warResult', res);
+  }
+
+  // ------------------------------------------------------------ Exile, collapse and reformation
+  function exile(d, of) {
+    d.exileOf = of == null ? d.faction : of; d.status = 'exile'; d.exiledAt = S.played;
+    if (d.role) { d.role = null; S.gov = S.gov.filter(x => x !== d.id); }
+    if (S.king === d.id) S.king = null;
+    S.nests.forEach((n, i) => { if (n && (n.a === d.id || n.b === d.id)) S.nests[i] = null; });
+    dirty();
+  }
+  function endFaction(f, why) {
+    const F = S.factions[f]; if (F.ended) return;
+    adultsOf(f).slice().forEach(d => {
+      // survivors scatter to a living faction they carry, otherwise into exile
+      const to = present(d.v).filter(e => e !== f && !S.factions[e].ended && adultsOf(e).length).sort((x, y) => d.v[y] - d.v[x])[0];
+      if (to != null) { d.faction = to; d.zone = EL[to].id; if (d.role) { d.role = null; S.gov = S.gov.filter(x => x !== d.id); } dirty(); }
+      else exile(d, f);
+    });
+    F.nest.forEach(id => { delete S.dragons[id]; }); F.nest = [];
+    F.ended = true; F.endedAt = S.played; F.falls = (F.falls || 0) + 1;
+    for (let g = 0; g < NE; g++) if (g !== f) { S.rel[f][g] = S.relBase[f][g] = 0; S.rel[g][f] = S.relBase[g][f] = isEnemy(f, g) ? C.relations.enemyCap : 0; }
+    if (S.warriorFor === f) S.warriorFor = null;
+    dirty();
+    logEvent(EL[f].name + ' has fallen (' + why + ')', 'war');
+    emit('factionFallen', { f, why });
+  }
+  function reformFaction(f, how, founder) {
+    const F = S.factions[f]; if (!F.ended) return;
+    F.ended = false; F.reformedAt = S.played; F.reforms = (F.reforms || 0) + 1;
+    let n = 0;
+    list(d => d.status === 'exile' && d.exileOf === f).forEach(d => { d.status = 'adult'; d.faction = f; d.zone = EL[f].id; d.exileOf = null; n++; });
+    if (founder) n++;
+    F.needs = { raum: 80, brut: 50, ehre: 40, tribut: 40 };
+    const RC = C.relations;
+    for (let g = 0; g < NE; g++) if (g !== f) {
+      const base = isEnemy(f, g) ? ri(RC.enemyStart[0], RC.enemyStart[1]) : ri(-20, 35);
+      S.relBase[f][g] = S.rel[f][g] = clamp(base + ri(-RC.asymmetry, RC.asymmetry), -100, 100);
+      S.relBase[g][f] = S.rel[g][f] = clamp(base + ri(-RC.asymmetry, RC.asymmetry), -100, 100);
+    }
+    dirty();
+    logEvent(EL[f].name + ' reforms (' + how + ')', 'epic');
+    emit('factionReformed', { f, how, n });
+  }
+  function updateExiles(dt) {
+    const ex = list(d => d.status === 'exile');
+    ex.forEach(d => {
+      const F = S.factions[d.exileOf];
+      if (F && !F.ended && S.played - d.exiledAt >= C.war.exileReturnSeconds) { d.status = 'adult'; d.faction = d.exileOf; d.zone = EL[d.exileOf].id; d.exileOf = null; dirty(); }
+    });
+    for (let f = 0; f < NE; f++) {
+      const F = S.factions[f];
+      if (!F.ended || S.played - F.endedAt < C.factions.reformSeconds) continue;
+      const n = ex.filter(d => d.exileOf === f && d.status === 'exile').length;
+      if (n >= C.factions.reformMin) reformFaction(f, n + ' exiles return home');
+    }
   }
 
   // ------------------------------------------------------------ Wild nests
@@ -976,6 +1067,7 @@
     const o = S.offers[f] && S.offers[f][idx];
     if (!o || o.done) return { ok: false };
     if (!S.access[f]) return { ok: false, msg: 'No access to this faction.' };
+    if (S.factions[f].ended) return { ok: false, msg: EL[f].name + ' has fallen – nobody is left to ask.' };
     const A = C.activities; const RP = A.rep; const T = o.target; const F = S.factions[f];
     let msg = '';
     switch (o.id) {
@@ -1118,6 +1210,7 @@
     updateNeeds(dt);
     updateRelations(dt);
     updateWar(dt);
+    updateExiles(dt);
     updatePortals(dt);
     // market
     const decay = Math.pow(0.5, dt / C.market.saturationHalfLife);
@@ -1147,7 +1240,7 @@
     zoneOpen, zoneHostile, incubatorOf, zoneName, zoneColor, slotPrice, portalPrice, crackStage,
     scaleValue, scaleSalePrice, parseKey, canCollect, scaleNeed, matFactor, materialChance,
     eggPrice, eggSalePrice, examineCost, wonderAvailable, schoolClarity, classify,
-    adultsOf, factionPower, needsMean, warRisk, eldest, list, law, lawOf, nestRestless, canPairCandidate, pairValid,
+    adultsOf, warSides, factionPower, needsMean, warRisk, eldest, list, law, lawOf, nestRestless, canPairCandidate, pairValid,
     // actions
     buyEgg, claimWonder, sellEgg, examine, setLabel, incubate, buySlot, hatch, collect, sellScales, sellAllScales,
     setPair, clearPair, buyPortal, buyBackdoor, toggleBackdoor, doActivity, refreshActivities,

@@ -33,6 +33,10 @@
   const matName = k => C.material.tiers[k - 1].name;
   const isNum = x => typeof x === 'number';
   const zoneTitle = z => G.zoneName(z) + ' Zone';
+  const sideOf = (w, k) => (w[k === 'a' ? 'sa' : 'sd'] || [w[k === 'a' ? 'attacker' : 'defender']]);
+  const sideTxt = side => side.map(f => elName(f)).join(' + ');
+  const sideTags = side => side.map(f => elTag(f)).join(' + ');
+  const fallen = f => !!(S.factions[f] && S.factions[f].ended);
 
   // ------------------------------------------------------------ images
   const im = (o, alt, cls) => `<img ${cls ? `class="${cls}"` : ''} src="${o.src}" width="${o.w}" height="${o.h}" alt="${alt || ''}">`;
@@ -55,7 +59,7 @@
   }
   function burstBox(text, cols) {
     cols = cols || ['#FF8A5C', '#E04434', '#9E2418'];
-    return `<div class="burstbox">${im(SP.burst(cols, 0, 4, 40), '')}${im(SP.burst(cols, 1, 4, 40), '', 'f1')}<span class="fanfare">${text}</span></div>`;
+    return `<div class="burstbox">${im(SP.burst(cols, 0, 4, 40), '')}${im(SP.burst(cols, 1, 4, 40), '', 'f1')}<span class="fanfare${text.length > 12 ? ' long' : ''}">${text}</span></div>`;
   }
   function tags(d) {
     const t = [];
@@ -372,7 +376,7 @@
     const king = S.king && S.dragons[S.king];
     const l = G.law();
     const al = G.alliances();
-    const war = S.war ? `<div class="bad">${icon('sword')} <b>${S.war.phase === 'announce' ? 'War threat' : 'War'}: ${elName(S.war.attacker)} vs ${elName(S.war.defender)}</b></div>` : `<div>${icon('peace')} Peace in the sky.</div>`;
+    const war = S.war ? `<div class="bad">${icon('sword')} <b>${S.war.phase === 'announce' ? 'War threat' : 'War'}: ${sideTxt(sideOf(S.war, 'a'))} vs ${sideTxt(sideOf(S.war, 'd'))}</b></div>` : `<div>${icon('peace')} Peace in the sky.</div>`;
     const head = `<div class="panel grid cols-2">
       <div class="kingbox">${king ? `<div class="pic" data-act="dragon" data-id="${king.id}">${imgDragon(king, 3)}</div>` : ''}<div>${icon('crown')} <b>${king ? king.name : '–'}</b><br><small>Dragon King · ${elTag(S.ruler)}${king ? ' · <span data-live="age:' + king.id + '"></span>' : ''}</small></div></div>
       <div>${icon('scroll')} <b>${l ? l.name : C.lawPlaceholder.name}</b><br><small>${l ? l.text : C.lawPlaceholder.text}</small></div>
@@ -385,7 +389,7 @@
     else if (tab === 'overview') body = `<div class="grid cols-2">${EL.map((e, f) => factionCard(f)).join('')}</div>`;
     else if (tab === 'matrix') body = matrixHtml();
     else if (tab === 'net') body = netHtml();
-    else body = S.logs.wars.length ? `<div class="log">${S.logs.wars.map(w => `<div class="li war"><span class="t">${fmtTime(w.t)}</span><span>${elTag(w.attacker)} (power ${w.pa.toFixed(1)}) vs ${elTag(w.defender)} (power ${w.pd.toFixed(1)}) · chance ${pct(w.chance)} · roll ${w.roll.toFixed(3)} → <b>${elName(w.winner)} wins</b>${w.newRuler ? ' · new ruler' : ''}${w.fates.length ? '<br>' + w.fates.map(x => x.name + ': ' + fateText(x.fate)).join(' · ') : ''}</span></div>`).join('')}</div>` : '<div class="empty panel">No war yet.</div>';
+    else body = S.logs.wars.length ? `<div class="log">${S.logs.wars.map(w => `<div class="li war"><span class="t">${fmtTime(w.t)}</span><span>${sideTags(sideOf(w, 'a'))} (power ${w.pa.toFixed(1)}) vs ${sideTags(sideOf(w, 'd'))} (power ${w.pd.toFixed(1)}) · chance ${pct(w.chance)} · roll ${w.roll.toFixed(3)} → <b>${sideTxt(w.wside || [w.winner])} win</b>${w.newRuler ? ' · new ruler' : ''}${(w.collapsed || []).length ? ' · <b class="bad">' + sideTxt(w.collapsed) + ' fell</b>' : ''}${w.fates.length ? '<br>' + w.fates.map(x => x.name + ': ' + fateText(x.fate)).join(' · ') : ''}</span></div>`).join('')}</div>` : '<div class="empty panel">No war yet.</div>';
     return `<div class="screen-head"><h2>The Factions</h2><span class="sub">Twelve elements fight over the sky.</span></div>${head}<div style="height:16px"></div>${tabs}${body}`;
   };
   function factionCard(f) {
@@ -402,7 +406,7 @@
     const needs = [['raum', 'Space'], ['brut', 'Brood'], ['ehre', 'Honour'], ['tribut', 'Tribute']];
     const dark = f === 3;
     return `<div class="panel fac">
-      <div class="fac-head" style="background:${EL[f].color}${dark ? ';background-image:var(--dots-light);background-size:7px 7px' : ''}">${f === S.ruler ? icon('crown') : ''}<h3>${elName(f)}</h3><span class="tag">${S.access[f] ? lvl.name : 'no access'}</span></div>
+      <div class="fac-head" style="background:${EL[f].color}${dark ? ';background-image:var(--dots-light);background-size:7px 7px' : ''}">${f === S.ruler ? icon('crown') : ''}<h3>${elName(f)}</h3>${fallen(f) ? '<span class="tag war">fallen</span>' : ''}<span class="tag">${S.access[f] ? lvl.name : 'no access'}</span></div>${fallen(f) ? `<p class="bad"><small><b>This faction has fallen.</b> Its exiles (${G.list(d => d.status === 'exile' && d.exileOf === f).length}) may gather to re-form it after ${Math.round(C.factions.reformSeconds / 60)} min, or a grown dragon may choose it and raise its banner again.</small></p>` : ''}
       <div class="repbar"><div class="bar gold"><i data-livew="repbar:${f}"></i></div><small><span data-live="rep:${f}"></span></small></div>
       <div class="row" style="font-size:14px"><span>Dragons <b>${N}</b>/${C.factions.capacity}</span><span>Power <b data-live="power:${f}"></b></span><span>War risk <b data-live="risk:${f}"></b></span><span>Nest ${F.nest.length} · young ${young}</span><span>Arch-enemy ${sw(G.enemyOf(f))}</span></div>
       <div class="needs ${risk > 0.35 ? 'alarm' : ''}">${needs.map(n => `<div>${n[1]}<div class="bar ${n[0] === 'raum' ? '' : 'gold'}"><i data-livew="need:${f}:${n[0]}"></i></div></div>`).join('')}</div>
@@ -429,7 +433,7 @@
   function boardHtml() {
     const left = Math.max(0, Math.ceil(C.activities.refreshSeconds - (S.played - S.offersAt)));
     const open = [], locked = [];
-    for (let f = 0; f < NE; f++) (S.access[f] ? open : locked).push(f);
+    for (let f = 0; f < NE; f++) (S.access[f] && !fallen(f) ? open : locked).push(f);
     const cards = g => {
       const items = [];
       open.forEach(f => (S.offers[f] || []).forEach((o, i) => { if (G.ACTI[o.id].group === g) items.push({ f, o, i }); }));
@@ -450,7 +454,7 @@
         <div class="board-timer"><small>new requests in</small><b data-live="actrefresh"></b></div></div>
       ${open.length ? '' : '<div class="panel empty" style="margin-top:14px">No faction talks to you yet. Raise a dragon to 1000 years – the faction it joins will start posting requests here.</div>'}
       ${open.length ? GROUPS.map(g => `<div class="section"><h3>${g[1]}</h3><small>${g[2]}</small></div><div class="board">${cards(g[0])}</div>`).join('') : ''}
-      ${locked.length ? `<div class="section"><h3>Not yet talking to you</h3><small>raise a dragon that joins them</small></div><div class="panel row">${locked.map(f => `<span class="tag">${sw(f)} ${elName(f)}</span>`).join('')}</div>` : ''}`;
+      ${locked.length ? `<div class="section"><h3>Not yet talking to you</h3><small>raise a dragon that joins them</small></div><div class="panel row">${locked.map(f => `<span class="tag">${sw(f)} ${elName(f)}${fallen(f) ? ' (fallen)' : ''}</span>`).join('')}</div>` : ''}`;
   }
 
   function actCost(id) {
@@ -493,7 +497,7 @@
     return `<div class="panel"><svg class="net" viewBox="0 0 400 380" role="img" aria-label="Faction relationship network">${lines}${nodes}</svg>
       <div class="legend"><span><span class="sw" style="background:#3fb85a"></span> strong liking</span><span><span class="sw" style="background:#ff4d3d"></span> strong dislike</span><span>thick = alliance with its own colour and name</span></div></div>`;
   }
-  const fateText = f => ({ fallen: '<b class="bad">fallen</b>', defect: '<b class="good">defected to the victor</b>', fled: '<span class="mute">fled</span>', stay: 'stays as a subject' })[f];
+  const fateText = f => ({ fallen: '<b class="bad">fallen</b>', defect: '<b class="good">defected to the victor</b>', fled: '<span class="mute">fled into exile</span>', stay: 'stays as a subject' })[f];
 
   SCREENS.bag = function () {
     const tab = ui.tabs.bag;
@@ -524,20 +528,20 @@
   // every living dragon in one list, with live ages
   SCREENS.dragons = function () {
     const F = ui.dfilter;
-    const all = G.list(d => d.status === 'school' || d.status === 'adult' || d.status === 'wild');
-    const groups = { all: () => true, pupils: d => d.status === 'school', adults: d => d.status === 'adult', mine: d => d.status === 'school' || d.raised, wild: d => d.status === 'wild' };
+    const all = G.list(d => d.status === 'school' || d.status === 'adult' || d.status === 'wild' || d.status === 'exile');
+    const groups = { all: () => true, pupils: d => d.status === 'school', adults: d => d.status === 'adult', mine: d => d.status === 'school' || d.raised, wild: d => d.status === 'wild', exile: d => d.status === 'exile' };
     let rows = all.filter(groups[F.who] || groups.all);
-    if (F.f !== '') rows = rows.filter(d => d.faction === +F.f);
+    if (F.f !== '') rows = rows.filter(d => (d.status === 'exile' ? d.exileOf : d.faction) === +F.f);
     const age = d => G.ageOf(d);
     const sorts = { old: (a, b) => age(b) - age(a) || a.id - b.id, young: (a, b) => age(a) - age(b) || a.id - b.id, name: (a, b) => a.name.localeCompare(b.name), strong: (a, b) => (b.status === 'adult' ? G.strength(b) : 0) - (a.status === 'adult' ? G.strength(a) : 0) || a.id - b.id };
     rows.sort(sorts[F.sort] || sorts.old);
     const count = k => all.filter(groups[k]).length;
-    const whoTabs = [['all', 'All'], ['pupils', 'Pupils'], ['adults', 'Adults'], ['mine', 'Raised by you'], ['wild', 'Wild young']]
+    const whoTabs = [['all', 'All'], ['pupils', 'Pupils'], ['adults', 'Adults'], ['mine', 'Raised by you'], ['wild', 'Wild young'], ['exile', 'In exile']]
       .map(t => `<button class="btn small ${F.who === t[0] ? 'on' : ''}" type="button" data-act="dfilter" data-k="who" data-v="${t[0]}">${t[1]} (${count(t[0])})</button>`).join('');
     const sortTabs = [['old', 'Oldest'], ['young', 'Youngest'], ['strong', 'Strongest'], ['name', 'Name']]
       .map(t => `<button class="btn small ${F.sort === t[0] ? 'on' : ''}" type="button" data-act="dfilter" data-k="sort" data-v="${t[0]}">${t[1]}</button>`).join('');
     const facSel = `<select data-dfilter="f" aria-label="Faction filter"><option value="">All factions</option>${EL.map((e, f) => `<option value="${f}" ${F.f === String(f) ? 'selected' : ''}>${e.name} (${G.adultsOf(f).length})</option>`).join('')}</select>`;
-    const status = d => d.status === 'school' ? 'Pupil · ' + zoneTitle(S.zones[d.zone]) : d.status === 'wild' ? 'Wild young · ' + elName(d.faction) : elName(d.faction) + (d.raised ? ' · raised by you' : '');
+    const status = d => d.status === 'school' ? 'Pupil · ' + zoneTitle(S.zones[d.zone]) : d.status === 'wild' ? 'Wild young · ' + elName(d.faction) : d.status === 'exile' ? 'In exile · from ' + elName(d.exileOf) : elName(d.faction) + (d.raised ? ' · raised by you' : '');
     const shown = rows.slice(0, F.limit);
     const list = shown.map(d => `<tr class="drow" data-act="dragon" data-id="${d.id}">
         <td><span class="dpic">${imgDragon(d, 2)}</span></td>
@@ -546,7 +550,7 @@
         <td class="dvec">${vecBar(d.v)}</td>
         <td><b data-live="age:${d.id}"></b></td>
         <td data-live="lvl:${d.id}"></td>
-        <td>${d.status === 'adult' ? `<span data-live="str:${d.id}"></span>` : '<span class="mute">–</span>'}</td>
+        <td>${d.status === 'adult' || d.status === 'exile' ? `<span data-live="str:${d.id}"></span>` : '<span class="mute">–</span>'}</td>
       </tr>`).join('');
     return `<div class="screen-head"><h2>All Dragons</h2><span class="sub">${all.length} living dragons · ${G.list(d => d.status === 'egg' || d.status === 'incubating').length} eggs waiting</span></div>
       <div class="tabs">${whoTabs}</div>
@@ -620,7 +624,7 @@
     const d = S.dragons[id]; if (!d) return;
     if (d.status === 'egg' || d.status === 'incubating') return eggModal(id);
     const parents = d.parents ? d.parents.map(p => S.dragons[p]).filter(Boolean).map(p => p.name).join(' × ') : '';
-    const statusText = { school: 'Pupil in the ' + zoneTitle(S.zones[d.zone]), adult: 'Adult · belongs to ' + elName(d.faction), wild: 'Young wild dragon' }[d.status] || d.status;
+    const statusText = { school: 'Pupil in the ' + zoneTitle(S.zones[d.zone]), adult: 'Adult · belongs to ' + elName(d.faction), wild: 'Young wild dragon', exile: 'In exile · fled from ' + (d.exileOf != null ? elName(d.exileOf) : '?') }[d.status] || d.status;
     showModal({ rebuild: () => dragonModalHtml(d, statusText, parents), build(b) { b.innerHTML = this.rebuild(); } }, true);
   }
   function dragonModalHtml(d, statusText, parents) {
@@ -776,11 +780,16 @@
   }
   function warResultModal(w) {
     Snd.drum();
+    const sa = sideOf(w, 'a'), sd = sideOf(w, 'd');
+    const lossRows = Object.keys(w.losses || {}).map(f => { const l = w.losses[f]; return `<tr><td>${elTag(+f)}</td><td>${l.fallen}</td><td>${l.defect}</td><td>${l.fled}</td></tr>`; }).join('');
     showModal({
-      html: `<h2>The war is over</h2><div class="reveal"><p>${elTag(w.attacker)} <b>${w.pa.toFixed(1)}</b> power vs ${elTag(w.defender)} <b>${w.pd.toFixed(1)}</b> power <small>(allies count half)</small></p>
-        <p>Attacker's chance: <b>${pct(w.chance)}</b> · roll: <b>${w.roll.toFixed(3)}</b> ${w.attackerWins ? '&lt;' : '≥'} ${w.chance.toFixed(3)}</p>
-        ${burstBox(elName(w.winner).toUpperCase() + ' WINS!')}${w.newRuler ? `<p class="big">${elName(w.winner)} now rules the sky.</p>` : ''}
-        <p><small>The losers' king falls. About ${pct(C.war.loserDie)} fall, ${pct(C.war.loserDefect)} defect or flee, the rest stay. Everyone involved is war-marked.</small></p>
+      html: `<h2>The war is over</h2><div class="reveal">
+        <p>${sideTags(sa)} <b>${w.pa.toFixed(1)}</b> power<br>vs<br>${sideTags(sd)} <b>${w.pd.toFixed(1)}</b> power<br><small>Alliances fight side by side at full strength.</small></p>
+        <p>Attackers' chance: <b>${pct(w.chance)}</b> · roll: <b>${w.roll.toFixed(3)}</b> ${w.attackerWins ? '&lt;' : '≥'} ${w.chance.toFixed(3)}</p>
+        ${burstBox(sideTxt(w.wside || [w.winner]).toUpperCase() + ' WIN!')}${w.newRuler ? `<p class="big">${elName(w.winner)} now rules the sky.</p>` : ''}
+        ${lossRows ? `<table class="list" style="max-width:380px"><tr><th>Losing side</th><th>fallen</th><th>defected</th><th>fled</th></tr>${lossRows}</table>` : ''}
+        ${(w.collapsed || []).length ? `<p class="bad"><b>${sideTxt(w.collapsed)} ${w.collapsed.length > 1 ? 'have' : 'has'} fallen</b> – the survivors scatter or go into exile.</p>` : ''}
+        <p><small>The losing leader's king falls. Winners grow closer, the losers' alliances strain. Fled dragons return after ${Math.round(C.war.exileReturnSeconds / 60)} min.</small></p>
         ${w.fates.length ? '<h3>Dragons you raised</h3>' + w.fates.map(x => `<div class="row">${im(SP.dragon({ id: 'f' + x.id, v: x.v, mat: x.mat, seed: x.seed, deep: false }, 2), '')} ${x.name}: ${fateText(x.fate)}</div>`).join('') : ''}</div>`,
     });
   }
@@ -797,8 +806,10 @@
           if (e.up) { Snd.fanfare(); const unl = C.rep.unlocks[G.REPL[e.to].id]; showModal({ html: `<div class="reveal">${burstBox(G.REPL[e.to].name.toUpperCase() + '!', ['#FFF6B0', '#FFD23F', '#F08A2A'])}<p>${elTag(e.f)} now regards you as <b>${G.REPL[e.to].name}</b>.</p>${unl ? '<p class="good"><b>Unlocked: ' + unl + '</b></p>' : ''}<button class="btn" type="button" data-act="closeModal">Continue</button></div>` }); }
           else toast(elTag(e.f) + ': reputation drops to ' + G.REPL[e.to].name, 'bad');
           break;
-        case 'warAnnounce': toast(elName(e.attacker) + ' challenges ' + elName(e.defender) + '! The sky darkens.', 'war'); Snd.drum(); break;
-        case 'warFight': toast('The war begins!', 'war'); break;
+        case 'warAnnounce': toast(sideTxt(e.sa || [e.attacker]) + ' challenge ' + sideTxt(e.sd || [e.defender]) + '! The sky darkens.', 'war'); Snd.drum(); break;
+        case 'factionFallen': toast(`${elTag(e.f)} <b>has fallen</b> (${e.why}). Its survivors scatter.`, 'war'); break;
+        case 'factionReformed': Snd.fanfare(); toast(`${elTag(e.f)} <b>reforms</b> – ${e.how}.`, 'epic'); break;
+        case 'warFight': toast('The war begins! ' + sideTxt(e.sa || []) + ' vs ' + sideTxt(e.sd || []), 'war'); break;
         case 'warResult': warResultModal(e); break;
         case 'coronation': { const k = S.dragons[e.king]; const l = G.lawOf(e.f) || C.lawPlaceholder; toast(`♛ Coronation: ${k ? k.name : '?'} (${elName(e.f)}) – ${l.name}: ${l.text}`, 'epic'); Snd.epic(); break; }
         case 'portal': { const z = S.zones[e.zone]; Snd.epic(); flash(); showModal({ html: `<div class="reveal">${hero(im(SP.portal(z.els.map(x => EL[x].color), 0, false, 4), ''))}<div class="fanfare">A PORTAL OPENS!</div><p>The <b>${zoneTitle(z)}</b> can now be reached (${e.how}).</p><button class="btn" type="button" data-act="zone" data-id="${z.id}">Step through</button></div>` }); break; }
@@ -1057,9 +1068,10 @@
     const shown = skySample(adults, 64);
     // war: the two sides fly into formation, everyone else fades into the background
     const B = battleState(war, t);
-    const side = d => (!war ? 0 : d.faction === war.attacker ? 1 : d.faction === war.defender ? 2 : 0);
+    const wa = war ? sideOf(war, 'a') : [], wd = war ? sideOf(war, 'd') : [];
+    const side = d => (!war ? 0 : wa.includes(d.faction) ? 1 : wd.includes(d.faction) ? 2 : 0);
     const ranks = { 1: [], 2: [] };
-    shown.forEach(d => { const sd = side(d); if (sd && ranks[sd].length < 12) ranks[sd].push(d.id); });
+    shown.filter(d => d.role).concat(shown.filter(d => !d.role)).forEach(d => { const sd = side(d); if (sd && ranks[sd].length < 20) ranks[sd].push(d.id); });
     const pull = !war ? 0 : war.phase === 'announce' ? smooth(Math.min(1, war.t / (C.war.announceSeconds * 0.8))) : 1;
     const pos = {};
     const draw = [];
@@ -1074,9 +1086,9 @@
       const s0 = side(d); const rk = s0 ? ranks[s0].indexOf(d.id) : -1;
       let dim = !!war && !s0;
       if (rk >= 0) {
-        const col = rk % 3, row = Math.floor(rk / 3);
-        const fx = s0 === 1 ? w * 0.08 + col * 21 + (row % 2) * 9 : w * 0.92 - 25 - col * 21 - (row % 2) * 9;
-        const top = 9, bottom = h - 20, rows = Math.ceil(ranks[s0].length / 3);
+        const COLS = w > 300 ? 4 : 3; const col = rk % COLS, row = Math.floor(rk / COLS);
+        const fx = s0 === 1 ? w * 0.04 + col * 20 + (row % 2) * 8 : w * 0.96 - 25 - col * 20 - (row % 2) * 8;
+        const top = 9, bottom = h - 20, rows = Math.ceil(ranks[s0].length / COLS);
         const gap = Math.min(14, Math.max(7, (bottom - top) / Math.max(1, rows)));
         const fy = top + ((bottom - top) - rows * gap) / 2 + row * gap + Math.sin(time * 2.2 + rk) * 1.5;
         x = x + (fx - x) * pull; y = y + (fy - y) * pull;
@@ -1115,7 +1127,7 @@
     const txt = `${adults.length} dragons in the sky${adults.length > shown.length ? ' (' + shown.length + ' shown to scale)' : ''}${S.king && S.dragons[S.king] ? ' · ♛ ' + S.dragons[S.king].name + ' + ' + S.gov.length + ' ministers (' + elName(S.ruler) + ')' : ''}`;
     if (info.textContent !== txt) info.textContent = txt;
     const tn = $('#tension');
-    if (war) { tn.hidden = false; tn.querySelector('.tension-label').textContent = (war.phase === 'announce' ? 'WAR THREAT: ' : 'WAR: ') + elName(war.attacker).toUpperCase() + ' vs ' + elName(war.defender).toUpperCase(); tn.querySelector('i').style.width = (war.phase === 'announce' ? tension * 100 : 100 - war.t / (war.fight || C.war.fightSeconds) * 100) + '%'; }
+    if (war) { tn.hidden = false; tn.querySelector('.tension-label').textContent = (war.phase === 'announce' ? 'WAR THREAT: ' : 'WAR: ') + sideTxt(wa).toUpperCase() + ' vs ' + sideTxt(wd).toUpperCase(); tn.querySelector('i').style.width = (war.phase === 'announce' ? tension * 100 : 100 - war.t / (war.fight || C.war.fightSeconds) * 100) + '%'; }
     else tn.hidden = true;
   }
   const smooth = x => x * x * (3 - 2 * x);
@@ -1128,12 +1140,12 @@
   }
   function drawBattle(c, B, ranks, pos, war, t) {
     const A = ranks[1].filter(id => pos[id]), D = ranks[2].filter(id => pos[id]);
-    if (A.length && D.length && t >= B.next && B.bolts.length < 10) {
+    if (A.length && D.length && t >= B.next && B.bolts.length < 18) {
       const fromA = Math.random() < 0.5;
       const src = (fromA ? A : D)[Math.floor(Math.random() * (fromA ? A : D).length)];
       const dst = (fromA ? D : A)[Math.floor(Math.random() * (fromA ? D : A).length)];
-      B.bolts.push({ src, dst, t0: t, dur: 550 + Math.random() * 350, col: EL[fromA ? war.attacker : war.defender].color, arc: (Math.random() - 0.5) * 14 });
-      B.next = t + 140 + Math.random() * 260;
+      B.bolts.push({ src, dst, t0: t, dur: 550 + Math.random() * 350, col: EL[(S.dragons[src] || {}).faction != null ? S.dragons[src].faction : (fromA ? war.attacker : war.defender)].color, arc: (Math.random() - 0.5) * 14 });
+      B.next = t + 70 + Math.random() * 170;
     }
     B.bolts = B.bolts.filter(b => {
       const p0 = pos[b.src], p1 = pos[b.dst]; if (!p0 || !p1) return false;

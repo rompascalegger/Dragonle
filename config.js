@@ -256,6 +256,8 @@
       // Faction choice on reaching adulthood [PROPOSAL]
       choice: { rulerPull: 1.5, rulerEnemyPush: 0.5 },
       govSize: 3,
+      reformSeconds: 360,       // a fallen faction can re-form after this long ...
+      reformMin: 2,             // ... once this many of its exiles have gathered (or a grown dragon chooses it)
     },
 
     wild: {
@@ -269,9 +271,9 @@
       allianceThreshold: 60,    // both directions above -> alliance
       enemyCap: -20,            // arch-enemies never rise above this
       enemyStart: [-90, -60],
-      otherStart: [-40, 55],
+      otherStart: [-40, 62],     // some factions start close enough to ally
       asymmetry: 15,
-      startAlliances: 2,
+      startAlliances: 4,        // bigger wars: allies always join
       reversion: 0.002,
       noise: 0.6,
       strong: 50,               // network view shows only |relation| >= strong
@@ -286,7 +288,13 @@
       cooldownSeconds: 60,
       cooldownPressureExp: 1,   // pause / (total population / total capacity)^exp -> reliable brake
       startPeaceSeconds: 300,   // peaceful start for new players
-      allyWeight: 0.5,
+      allyWeight: 1.0,          // designer: alliances always help each other at full strength
+      allyLoserDie: 0.2,        // allies on the losing side lose fewer dragons than the leader
+      allyLoserDefect: 0.2,
+      collapseBelow: 2,         // a faction with fewer adults after a lost war collapses
+      exileReturnSeconds: 300,  // fled dragons come home after this long (if their faction still exists)
+      victoryBond: 12,          // winners grow closer
+      defeatStrain: 15,         // losing allies blame each other
       loserDie: 0.30,
       loserDefect: 0.30,
       ehreSwing: 30,
