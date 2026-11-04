@@ -241,7 +241,7 @@
     const mature = d.status === 'school' && d.age >= C.time.matureAge;
     return `<div class="card click" data-act="dragon" data-id="${d.id}">
       <div class="pic">${imgDragon(d, 3)}</div>
-      <div class="meta"><div class="nm">${d.name} ${tags(d)}</div>${vecBar(d.v)}
+      <div class="meta"><div class="nm">${d.name} ${tags(d)}</div><small>${SP.variantName(d)}</small>${vecBar(d.v)}
         <div class="dim"><span data-live="age:${d.id}"></span> · lvl <span data-live="lvl:${d.id}"></span>${mature ? ' · <span class="mature">mature</span>' : ''}${extra || ''}</div>
         ${d.status === 'school' ? `<div class="bar"><i data-livew="school:${d.id}"></i></div>` : ''}
       </div></div>`;
@@ -530,7 +530,7 @@
   }
   function dragonModalHtml(d, statusText, parents) {
     return `<h2>${d.name}</h2><div class="reveal">${hero(imgDragon(d, 5), d.mat)}<div>${tags(d)}</div></div>
-      <p class="center"><b>${statusText}</b></p>
+      <p class="center"><b>${statusText}</b><br><small>${SP.variantName(d)}</small></p>
       <h3>${icon('lupe')} Magnifier – exact shares</h3>${vecRows(d.v)}
       <div class="grid cols-2" style="margin-top:12px;gap:6px">
         <div>Age: <b data-live="age:${d.id}"></b></div><div>Level: <b data-live="lvl:${d.id}"></b></div>
