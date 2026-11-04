@@ -113,7 +113,8 @@
     if (m.build) m.build(body); else body.innerHTML = m.html;
     applyLive(body);
   }
-  function closeModal() { if (ui.modal && ui.modal.busy) { ui.skip = true; return; } const m = ui.modal; if (m && m.onClose) m.onClose(); nextModal(); render(true); }
+  function closeModal() { if (ui.modal && ui.modal.busy) { ui.skip = true; ui.modal.closeWhenDone = true; return; } const m = ui.modal; if (m && m.onClose) m.onClose(); nextModal(); render(true); }
+  function settle(m) { m.busy = false; if (m.closeWhenDone && ui.modal === m) closeModal(); }
   function refreshModal() { if (ui.modal && ui.modal.rebuild) { const body = $('#modal-body'); body.innerHTML = ui.modal.rebuild(); applyLive(body); } }
   const wait = ms => new Promise(res => { if (ui.skip) return res(); const t0 = performance.now(); const id = setInterval(() => { if (ui.skip || performance.now() - t0 >= ms) { clearInterval(id); res(); } }, 16); });
 
@@ -297,7 +298,7 @@
       }
       const used = new Set(); S.nests.forEach(x => { if (x) { used.add(x.a); used.add(x.b); } });
       const sel = ui.nestSel[i] || {};
-      const opts = which => `<option value="">– choose –</option>` + cands.filter(d => !used.has(d.id)).map(d => `<option value="${d.id}" ${+sel[which] === d.id ? 'selected' : ''}>${d.name} · ${d.status === 'adult' ? elName(d.faction) + ' (adult)' : Math.floor(d.age) + ' yrs'} · ${G.vecText(d.v)}</option>`).join('');
+      const opts = which => `<option value="">– choose –</option>` + cands.filter(d => !used.has(d.id)).map(d => `<option value="${d.id}" ${+sel[which] === d.id ? 'selected' : ''}>${d.name} · ${d.status === 'adult' ? elName(d.faction) + ' (adult)' : 'pupil'} · ${G.vecText(d.v)}</option>`).join('');
       let pv = '';
       if (sel.a && sel.b && S.dragons[sel.a] && S.dragons[sel.b]) {
         const v = G.pairValid(+sel.a, +sel.b);
@@ -606,7 +607,7 @@
           if (res.hit === false) ex.push('<div class="bad"><b>Label missed.</b></div>');
           $('#hn').textContent = d.name;
           $('#hextra').innerHTML = ex.join('');
-          m.busy = false;
+          settle(m);
           const sk = b.querySelector('[data-act="skip"]'); if (sk) sk.outerHTML = '<button class="btn" type="button" data-act="closeModal">Continue</button>';
         })();
       },
@@ -621,75 +622,46 @@
     if (a === 'short') return 'short';
     return special ? 'full' : 'short';
   }
-  function clutchModal(ev) {
+  // clutch: a small, quiet info box at the side – the four rolls are still shown openly
+  function clutchBox(ev) {
+    let wrap = $('#clutches');
+    if (!wrap) { wrap = document.createElement('div'); wrap.id = 'clutches'; wrap.className = 'clutches'; document.body.appendChild(wrap); }
     const a = S.dragons[ev.a], b = S.dragons[ev.b];
     const r = ev.roll;
-    const mode = animMode(true); // targeted pairings get the full animation in auto mode
     const mix = a && b ? G.mixColor(a.v.map((x, i) => (x + b.v[i]) / 2)) : '#ffd23f';
-    const m = {
-      busy: true,
-      build(body) {
-        body.innerHTML = `<h2>A clutch!</h2><div class="clutch"><b>${a ? a.name : '?'} × ${b ? b.name : '?'}</b>
-          <div class="pxnest flicker" id="bowl">${im(SP.nest(mix, false, 4), '')}<div class="slots">${Array.from({ length: 12 }, (_, i) => `<div class="slot off" data-i="${i}">${im(SP.egg({ shell: '#2a1a34', spots: '#2a1a34', seed: i + 1, plain: true, line: '#0c0612' }, 2), '', 'sh')}</div>`).join('')}</div></div>
-          <div class="counter" id="ctr">…</div><div class="rolls" id="rolls"></div><div id="cmsg"></div>
-          <button class="btn small ghost" type="button" data-act="skip">Skip</button></div>`;
-        run(body);
-      },
-    };
-    const T = mode === 'full' ? 1 : 0.22;
-    async function spin(el, lo, hi, final, ms) {
-      const steps = Math.max(4, Math.round(ms / 70));
-      for (let i = 0; i < steps && !ui.skip; i++) {
-        el.textContent = lo + Math.floor(Math.random() * (hi - lo + 1)); el.classList.add('spin'); Snd.tick();
-        await wait(40 + (i / steps) * (i / steps) * 220 * T);
+    const el = document.createElement('div');
+    el.className = 'cbox' + (r.z >= C.breed.bigClutch ? ' big' : '') + (r.a === 0 ? ' empty' : '');
+    el.dataset.act = 'goChamber';
+    el.title = 'Open the egg chamber';
+    el.innerHTML = `<div class="chead"><span>${icon('nest')} Nest ${ev.slot + 1}</span><small>${a ? a.name : '?'} × ${b ? b.name : '?'}</small></div>
+      <div class="crolls"><span data-k="a">gate <b>·</b></span><span data-k="x">x <b>·</b></span><span data-k="y">y <b>·</b></span><span data-k="z">z <b>·</b></span></div>
+      <div class="ceggs"></div><div class="cres">…</div>`;
+    wrap.prepend(el);
+    while (wrap.children.length > 3) wrap.lastChild.remove();
+    const quick = S.settings.anim === 'short';
+    const set = (k, v, lo, hi) => new Promise(res => {
+      const span = el.querySelector(`[data-k="${k}"] b`); if (!span) return res();
+      let n = 0; const steps = quick ? 2 : 6;
+      const id = setInterval(() => {
+        if (n++ >= steps) { clearInterval(id); span.textContent = v; span.parentNode.classList.add('on'); return res(); }
+        span.textContent = lo + Math.floor(Math.random() * (hi - lo + 1));
+      }, 55);
+    });
+    (async () => {
+      await set('a', r.a, 0, C.breed.gateMax);
+      if (r.a === 0) {
+        el.querySelectorAll('[data-k="x"],[data-k="y"],[data-k="z"]').forEach(s => s.classList.add('off'));
+        el.querySelector('.cres').innerHTML = '<span class="bad">The nest goes dark – no eggs.</span>';
+      } else {
+        await set('x', r.x, 1, C.breed.xMax);
+        await set('y', r.y, 1, r.x);
+        await set('z', r.z, 1, r.y);
+        el.querySelector('.ceggs').innerHTML = ev.eggs.map((id, i) => imgEgg(S.dragons[id] || { seed: i, shell: mix }, 2)).join('');
+        el.querySelector('.cres').innerHTML = `<b>${r.z} egg${r.z === 1 ? '' : 's'}</b> in the egg chamber${r.z >= C.breed.bigClutch ? ' – <span class="goldt">a giant clutch!</span>' : ''}`;
+        Snd.tone(660, 0.12, 'triangle', 0.03); // one soft chime
       }
-      if (!ui.skip && mode === 'full' && hi > lo) { el.textContent = final === hi ? hi - 1 : final + 1; await wait(380); } // hesitate
-      el.textContent = final; el.classList.remove('spin');
-    }
-    async function run(body) {
-      const ctr = body.querySelector('#ctr'), rolls = body.querySelector('#rolls'), bowl = body.querySelector('#bowl'), msg = body.querySelector('#cmsg');
-      const shadows = [...body.querySelectorAll('.slot')];
-      const addRoll = t => { rolls.insertAdjacentHTML('beforeend', `<span>${t}</span>`); };
-      await spin(ctr, 0, C.breed.gateMax, r.a, 1400 * T);
-      addRoll('gate ' + r.a + ' / 0–' + C.breed.gateMax);
-      bowl.classList.remove('flicker');
-      if (r.a === 0) { bowl.querySelector('img').src = SP.nest(mix, true, 4).src; bowl.insertAdjacentHTML('beforeend', '<div class="smoke">puff . . . puff</div>'); msg.innerHTML = '<p class="bad"><b>The nest goes dark. An empty clutch.</b></p>'; Snd.bad(); return done(); }
-      Snd.tone(220, 0.4, 'sawtooth', 0.05);
-      await wait(300 * T);
-      await spin(ctr, 1, C.breed.xMax, r.x, 1600 * T);
-      addRoll('x = ' + r.x + ' / 1–12');
-      for (let i = 0; i < r.x; i++) shadows[i].classList.remove('off');
-      await wait(400 * T);
-      await spin(ctr, 1, r.x, r.y, 1500 * T);
-      addRoll('y = ' + r.y + ' / 1–' + r.x);
-      for (let i = r.x - 1; i >= r.y; i--) { shadows[i].classList.add('off'); await wait(140 * T); }
-      await wait(300 * T);
-      await spin(ctr, 1, r.y, r.z, 1700 * T);
-      addRoll('z = ' + r.z + ' / 1–' + r.y);
-      for (let i = r.y - 1; i >= r.z; i--) { shadows[i].classList.add('off'); await wait(160 * T); }
-      for (let i = 0; i < r.z; i++) {
-        if (i === r.z - 1 && r.z > 1) await wait(700 * T); // the last step lingers
-        const egg = S.dragons[ev.eggs[i]];
-        shadows[i].classList.add('real'); shadows[i].innerHTML = imgEgg(egg || { seed: i, shell: mix }, 2);
-        Snd.egg(i); await wait(220 * T);
-      }
-      ctr.textContent = r.z + (r.z === 1 ? ' EGG' : ' EGGS');
-      if (r.z >= C.breed.bigClutch) { document.body.insertAdjacentHTML('beforeend', '<div class="beam"></div>'); setTimeout(() => { const bm = document.querySelector('.beam'); if (bm) bm.remove(); }, 1700); Snd.epic(); flash(); msg.innerHTML = '<p class="fanfare">A GIANT CLUTCH!</p>'; }
-      else Snd.fanfare();
-      done();
-    }
-    function done() {
-      const body = $('#modal-body');
-      if (ui.skip) {
-        const ctr = body.querySelector('#ctr'); if (ctr) ctr.textContent = r.a ? r.z + (r.z === 1 ? ' EGG' : ' EGGS') : '0';
-        const rolls = body.querySelector('#rolls'); if (rolls) rolls.innerHTML = `<span>gate ${r.a}</span>${r.a ? `<span>x = ${r.x}</span><span>y = ${r.y}</span><span>z = ${r.z}</span>` : ''}`;
-        body.querySelectorAll('.slot').forEach((s, i) => { if (i < r.z) { s.className = 'slot real'; s.innerHTML = imgEgg(S.dragons[ev.eggs[i]] || { seed: i, shell: mix }, 2); } else s.classList.add('off'); });
-      }
-      m.busy = false;
-      const sk = body.querySelector('[data-act="skip"]');
-      if (sk) sk.outerHTML = `<div class="row" style="justify-content:center"><button class="btn" type="button" data-act="closeModal">${r.z ? 'Into the egg chamber' : 'Too bad'}</button>${r.z ? '<button class="btn ghost" type="button" data-act="goChamber">Open egg chamber</button>' : ''}</div>`;
-    }
-    showModal(m);
+      setTimeout(() => { el.classList.add('gone'); setTimeout(() => el.remove(), 400); }, 9000);
+    })();
   }
 
   function graduateModal(ev) {
@@ -723,7 +695,7 @@
   function handleEvents() {
     for (const e of G.drain()) {
       switch (e.type) {
-        case 'clutch': clutchModal(e); break;
+        case 'clutch': clutchBox(e); break;
         case 'graduate': graduateModal(e); break;
         case 'eggReady': toast('An egg in the ' + zoneTitle(S.zones[e.zone]) + ' is ready to hatch!', 'good'); Snd.tone(880, 0.1, 'triangle', 0.06); break;
         case 'mature': { const d = S.dragons[e.id]; if (d) toast(d.name + ' is now mature (300 yrs).'); break; }
@@ -786,7 +758,8 @@
 
   document.addEventListener('click', e => {
     Snd.init();
-    const el = e.target.closest('[data-act]'); if (!el) { if (e.target.id === 'modal') closeModal(); return; }
+    if (e.target.id === 'modal') { closeModal(); return; }
+    const el = e.target.closest('[data-act]'); if (!el) return;
     e.preventDefault();
     const fn = ACT[el.dataset.act]; if (fn) fn(el.dataset, el, e);
   });
@@ -985,19 +958,47 @@
     const adults = [];
     for (let f = 0; f < NE; f++) G.adultsOf(f).forEach(d => adults.push(d));
     const shown = skySample(adults, 64);
-    shown.forEach((d, i) => {
+    // war: the two sides fly into formation, everyone else fades into the background
+    const B = battleState(war, t);
+    const side = d => (!war ? 0 : d.faction === war.attacker ? 1 : d.faction === war.defender ? 2 : 0);
+    const ranks = { 1: [], 2: [] };
+    shown.forEach(d => { const sd = side(d); if (sd && ranks[sd].length < 12) ranks[sd].push(d.id); });
+    const pull = !war ? 0 : war.phase === 'announce' ? smooth(Math.min(1, war.t / (C.war.announceSeconds * 0.8))) : 1;
+    const pos = {};
+    const draw = [];
+    shown.forEach(d => {
       const sd = d.seed;
       const vip = d.role === 'king' || d.role === 'gov';
       const speed = vip ? 3 : 4 + (sd % 100) / 12;
-      const dir = sd % 2 ? 1 : -1;
+      let dir = sd % 2 ? 1 : -1;
       const span = w + 60;
       let x = ((time * speed + (sd % 997)) % span); if (dir < 0) x = span - x; x -= 30;
-      const y = 1 + ((sd >>> 3) % Math.max(1, h - 28)) + Math.sin(time * 1.3 + sd) * 2;
-      const frame = Math.floor(time * 3 + sd) % 2;
-      let col = EL[d.faction].color;
-      if (war && war.phase === 'fight' && (d.faction === war.attacker || d.faction === war.defender) && Math.floor(time * 6 + i) % 7 === 0) col = '#ffffff';
-      c.drawImage(SP.skyDragon(col, frame, dir < 0, d.role === 'king', d.mat, d.role === 'gov'), Math.round(x), Math.round(y));
+      let y = 1 + ((sd >>> 3) % Math.max(1, h - 28)) + Math.sin(time * 1.3 + sd) * 2;
+      const s0 = side(d); const rk = s0 ? ranks[s0].indexOf(d.id) : -1;
+      let dim = !!war && !s0;
+      if (rk >= 0) {
+        const col = rk % 3, row = Math.floor(rk / 3);
+        const fx = s0 === 1 ? w * 0.08 + col * 21 + (row % 2) * 9 : w * 0.92 - 25 - col * 21 - (row % 2) * 9;
+        const top = 9, bottom = h - 20, rows = Math.ceil(ranks[s0].length / 3);
+        const gap = Math.min(14, Math.max(7, (bottom - top) / Math.max(1, rows)));
+        const fy = top + ((bottom - top) - rows * gap) / 2 + row * gap + Math.sin(time * 2.2 + rk) * 1.5;
+        x = x + (fx - x) * pull; y = y + (fy - y) * pull;
+        if (pull > 0.5) dir = s0 === 1 ? 1 : -1;
+      } else if (s0) dim = true;
+      pos[d.id] = { x: x + 12, y: y + 6 };
+      draw.push({ d, x, y, dir, dim, front: rk >= 0 });
     });
+    draw.sort((a, b) => a.front - b.front);
+    draw.forEach(o => {
+      const d = o.d;
+      const frame = Math.floor(time * (o.front && war && war.phase === 'fight' ? 6 : 3) + d.seed) % 2;
+      const hit = B.flash[d.id] && B.flash[d.id] > t;
+      const col = hit ? '#ffffff' : EL[d.faction].color;
+      c.globalAlpha = o.dim ? 0.35 : 1;
+      c.drawImage(SP.skyDragon(col, frame, o.dir < 0, d.role === 'king', d.mat, d.role === 'gov'), Math.round(o.x), Math.round(o.y));
+    });
+    c.globalAlpha = 1;
+    if (war && war.phase === 'fight') drawBattle(c, B, ranks, pos, war, t);
     // hills
     c.fillStyle = tension > 0 ? '#16060c' : '#120a26';
     for (let x = 0; x < w; x++) { const hh = 6 + Math.round(Math.abs(Math.sin(x * 0.07) * 6 + Math.sin(x * 0.023 + 1) * 5)); c.fillRect(x, h - hh, 1, hh); }
@@ -1019,7 +1020,54 @@
     const tn = $('#tension');
     if (war) { tn.hidden = false; tn.querySelector('.tension-label').textContent = (war.phase === 'announce' ? 'WAR THREAT: ' : 'WAR: ') + elName(war.attacker).toUpperCase() + ' vs ' + elName(war.defender).toUpperCase(); tn.querySelector('i').style.width = (war.phase === 'announce' ? tension * 100 : 100 - war.t / (war.fight || C.war.fightSeconds) * 100) + '%'; }
     else tn.hidden = true;
-    document.querySelector('.sky-wrap').classList.toggle('war', !!(war && war.phase === 'fight'));
+  }
+  const smooth = x => x * x * (3 - 2 * x);
+  // pixel battle: fire bolts, blasts and smoke (purely visual, drawn into the sky canvas)
+  const battle = { key: '', bolts: [], blasts: [], smoke: [], flash: {}, next: 0 };
+  function battleState(war, t) {
+    const key = war ? war.attacker + '-' + war.defender : '';
+    if (key !== battle.key) { battle.key = key; battle.bolts = []; battle.blasts = []; battle.smoke = []; battle.flash = {}; battle.next = t + 400; }
+    return battle;
+  }
+  function drawBattle(c, B, ranks, pos, war, t) {
+    const A = ranks[1].filter(id => pos[id]), D = ranks[2].filter(id => pos[id]);
+    if (A.length && D.length && t >= B.next && B.bolts.length < 10) {
+      const fromA = Math.random() < 0.5;
+      const src = (fromA ? A : D)[Math.floor(Math.random() * (fromA ? A : D).length)];
+      const dst = (fromA ? D : A)[Math.floor(Math.random() * (fromA ? D : A).length)];
+      B.bolts.push({ src, dst, t0: t, dur: 550 + Math.random() * 350, col: EL[fromA ? war.attacker : war.defender].color, arc: (Math.random() - 0.5) * 14 });
+      B.next = t + 140 + Math.random() * 260;
+    }
+    B.bolts = B.bolts.filter(b => {
+      const p0 = pos[b.src], p1 = pos[b.dst]; if (!p0 || !p1) return false;
+      const k = (t - b.t0) / b.dur;
+      if (k >= 1) { B.blasts.push({ x: p1.x, y: p1.y, t0: t }); B.flash[b.dst] = t + 120; return false; }
+      const bx = p0.x + (p1.x - p0.x) * k, by = p0.y + (p1.y - p0.y) * k - Math.sin(k * Math.PI) * b.arc;
+      const dx = Math.sign(p1.x - p0.x) || 1;
+      for (let i = 4; i >= 1; i--) { c.fillStyle = i >= 3 ? SP.shade(b.col, 0.5) : i === 2 ? SP.shade(b.col, 0.8) : b.col; c.fillRect(Math.round(bx - dx * (i * 3 + 1)), Math.round(by) - (i < 3 ? 1 : 0), 3, i < 3 ? 3 : 1); }
+      c.fillStyle = SP.INK; c.fillRect(Math.round(bx) - 2, Math.round(by) - 2, 5, 5);
+      c.fillStyle = b.col; c.fillRect(Math.round(bx) - 1, Math.round(by) - 1, 3, 3);
+      c.fillStyle = '#ffffff'; c.fillRect(Math.round(bx), Math.round(by), 1, 1);
+      return true;
+    });
+    const ring = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]];
+    B.blasts = B.blasts.filter(b => {
+      const f = Math.floor((t - b.t0) / 70); if (f > 5) { B.smoke.push({ x: b.x, y: b.y, t0: t }); return false; }
+      const cols = ['#ffffff', '#fff27a', '#ffd23f', '#ff9a2e', '#e04434', '#7a2a20'];
+      const r = 2 + f * 1.5;
+      c.fillStyle = cols[f];
+      ring.forEach(o => c.fillRect(Math.round(b.x + o[0] * r) - 1, Math.round(b.y + o[1] * r) - 1, f < 3 ? 3 : 2, f < 3 ? 3 : 2));
+      if (f < 3) { c.fillStyle = f ? '#fff27a' : '#ffffff'; c.fillRect(Math.round(b.x) - 2, Math.round(b.y) - 2, 5, 5); }
+      return true;
+    });
+    B.smoke = B.smoke.filter(p => {
+      const k = (t - p.t0) / 1400; if (k >= 1) return false;
+      const y = p.y - k * 10; const gray = k < 0.5 ? '#6a5a70' : '#43384c';
+      c.fillStyle = gray;
+      [[0, 0], [2, -1], [-2, -1], [1, -3]].forEach((o, i) => { if ((i + Math.floor(k * 8)) % 3 !== 0) c.fillRect(Math.round(p.x + o[0] + k * 3), Math.round(y + o[1]), 2, 2); });
+      return true;
+    });
+    Object.keys(B.flash).forEach(id => { if (B.flash[id] < t) delete B.flash[id]; });
   }
 
   // largest-remainder sample: each faction keeps its share of the sky; king & government always fly

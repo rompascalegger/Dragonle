@@ -99,7 +99,6 @@ b { font-weight: 700; }
 .tension-label { font-family: var(--head); font-weight: 700; font-size: 13px; color: var(--yellow); text-shadow: 2px 2px 0 #000; }
 .tension-bar { width: 180px; height: 12px; background: #2a0a10; box-shadow: var(--pb2); }
 .tension-bar i { display: block; height: 100%; width: 0; background: repeating-linear-gradient(90deg, var(--red) 0 6px, var(--orange) 6px 9px); }
-.sky-wrap.war { animation: rumble .3s steps(2) infinite; }
 
 /* ---------------------------------------------------------------- view */
 .view { max-width: 1140px; margin: 0 auto; padding: 16px 14px 28px; outline: none; }
@@ -362,7 +361,6 @@ table.list td { padding: 5px 6px; border-bottom: 2px dashed rgba(27,16,36,.2); v
 @keyframes slide { from { transform: translateX(36px); opacity: 0; } }
 @keyframes fade { to { opacity: 0; transform: translateY(6px); } }
 @keyframes flash { 0% { opacity: .7; } 100% { opacity: 0; } }
-@keyframes rumble { 50% { transform: translate(3px, -3px); } }
 @keyframes beam { 0% { opacity: 0; width: 12px; } 30% { opacity: 1; width: 120px; } 100% { opacity: 0; width: 48px; } }
 
 @media (prefers-reduced-motion: reduce) {
@@ -382,3 +380,21 @@ table.list td { padding: 5px 6px; border-bottom: 2px dashed rgba(27,16,36,.2); v
   .book { grid-template-columns: 1fr; }
   .book .toc { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* clutch info box (side, small, quiet) */
+.clutches { position: fixed; left: 14px; bottom: calc(var(--navh) + 16px); z-index: 65; display: grid; gap: 10px; width: 236px; }
+.cbox { background: var(--paper); box-shadow: var(--pb), var(--drop); padding: 8px 10px; font-size: 14px; cursor: pointer; display: grid; gap: 6px; animation: slide .2s steps(3); transition: opacity .4s steps(3); }
+.cbox:hover { background: #fff6dc; }
+.cbox.gone { opacity: 0; }
+.cbox.big { box-shadow: 0 -3px 0 0 var(--yellow), 0 3px 0 0 var(--yellow), -3px 0 0 0 var(--yellow), 3px 0 0 0 var(--yellow), var(--drop); }
+.cbox .chead { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-weight: 700; }
+.cbox .chead small { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cbox .crolls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.cbox .crolls span { background: #fff; box-shadow: var(--pb2); text-align: center; padding: 1px 0; font-size: 13px; color: var(--mute); }
+.cbox .crolls span.on { color: var(--ink); }
+.cbox .crolls span.off { opacity: .35; }
+.cbox .crolls b { color: var(--ink); }
+.cbox .ceggs { display: flex; flex-wrap: wrap; gap: 2px; min-height: 0; }
+.cbox .ceggs:empty { display: none; }
+.cbox .ceggs img { animation: pop .25s steps(3); }
+@media (max-width: 640px) { .clutches { width: 200px; left: 8px; } }
