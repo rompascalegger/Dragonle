@@ -131,7 +131,8 @@
 
     // ---------------------------------------------------------------- Breeding
     breed: {
-      chancePerYear: 1 / 50,    // [PROPOSAL] geometric, mean 50 years
+      minYears: 50,             // designer: a new clutch takes at least 50 years
+      chancePerYear: 1 / 50,    // [PROPOSAL] after the minimum, geometric extra wait (mean 50 years)
       adultBoost: 1.0,          // [OPEN] boost from 1000 years -> placeholder without effect
       restlessYears: 5,         // [PROPOSAL] warning "restless"
       nests: 3,                 // nesting ground: simultaneous pairs

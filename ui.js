@@ -9,7 +9,7 @@
   const SPEED = Math.max(1, Math.min(200, +params.get('speed') || 1)); // test aid: ?speed=20
   const view = $('#view');
 
-  const ui = { screen: 'world', zone: null, tabs: { school: 'chamber', factions: 'overview', bag: 'scales', log: 'breed' }, dfilter: { who: 'all', f: '', sort: 'old', limit: 120 }, last: '', queue: [], modal: null, combo: { n: 0, t: 0 }, nestSel: {}, skip: false };
+  const ui = { screen: 'world', zone: null, tabs: { school: 'chamber', factions: 'board', bag: 'scales', log: 'breed' }, dfilter: { who: 'all', f: '', sort: 'old', limit: 120 }, last: '', queue: [], modal: null, combo: { n: 0, t: 0 }, nestSel: {}, skip: false };
   let S;
 
   // ------------------------------------------------------------ saving & start
@@ -138,6 +138,7 @@
       case 'risk': return pct(Math.min(1, G.warRisk(+p[1])));
       case 'power': return G.factionPower(+p[1]).toFixed(1);
       case 'nest': { const n = S.nests[+p[1]]; return n ? (G.nestRestless(n) ? 'restless!' : 'calm') : ''; }
+      case 'actrefresh': { const l = Math.max(0, Math.ceil(C.activities.refreshSeconds - (S.played - S.offersAt))); return Math.floor(l / 60) + ':' + String(l % 60).padStart(2, '0'); }
       case 'wonder': return G.wonderAvailable() ? 'ready!' : 'back tomorrow';
       default: return '';
     }
@@ -283,38 +284,52 @@
 
   SCREENS.nest = function () {
     const cands = G.list(d => G.canPairCandidate(d)).sort((a, b) => (a.status === b.status ? a.id - b.id : a.status === 'school' ? -1 : 1));
+    const every = Math.round(1 / (C.breed.chancePerYear * ((G.law() && G.law().breedMult) || 1)));
+    const minY = C.breed.minYears;
+    const who = d => (d.status === 'adult' ? elName(d.faction) : 'pupil') + ' · ' + SP.variantName(d);
     const nests = S.nests.map((n, i) => {
       if (n) {
         const a = S.dragons[n.a], b = S.dragons[n.b];
-        const pv = G.inheritPreview(a, b);
-        return `<div class="panel nest-card">
-          <div class="row"><h3>Nest ${i + 1}</h3><span class="spacer"></span><span class="tag" data-live-cls="${i}" data-live="nest:${i}"></span></div>
-          <div class="nest-pair"><div class="card click" data-act="dragon" data-id="${a.id}"><div class="pic">${imgDragon(a, 2)}</div><div class="meta"><b>${a.name}</b><small>${a.status === 'adult' ? elName(a.faction) : 'pupil'}</small></div></div>
-            <div class="nest-heart on">${icon('heart', 3)}</div>
-            <div class="card click" data-act="dragon" data-id="${b.id}"><div class="pic">${imgDragon(b, 2, true)}</div><div class="meta"><b>${b.name}</b><small>${b.status === 'adult' ? elName(b.faction) : 'pupil'}</small></div></div></div>
-          ${previewHtml(pv)}
-          <div class="row"><small>On average every ${Math.round(1 / (C.breed.chancePerYear * ((G.law() && G.law().breedMult) || 1)))} years, with a wide spread.</small><span class="spacer"></span><button class="btn small danger" type="button" data-act="unpair" data-id="${i}">Separate</button></div>
+        const glow = G.mixColor(a.v.map((x, k) => (x + b.v[k]) / 2));
+        return `<div class="panel nest-card" data-live-cls="${i}">
+          <div class="nhead"><b>Nest ${i + 1}</b><span class="nstate" data-live="nest:${i}"></span></div>
+          <div class="nscene">${im(SP.nest(glow, false, 3), '', 'nbowl')}
+            <span class="nd l" data-act="dragon" data-id="${a.id}" title="${a.name}">${imgDragon(a, 3)}</span>
+            <span class="nheart">${icon('heart', 3)}</span>
+            <span class="nd r" data-act="dragon" data-id="${b.id}" title="${b.name}">${imgDragon(b, 3, true)}</span>
+          </div>
+          <div class="nnames"><span><b>${a.name}</b><small>${who(a)}</small></span><span class="r"><b>${b.name}</b><small>${who(b)}</small></span></div>
+          ${previewHtml(G.inheritPreview(a, b))}
+          <div class="nfoot"><small>At least ${minY} years per clutch, then about ${every} more on average.</small><button class="btn small danger" type="button" data-act="unpair" data-id="${i}">Separate</button></div>
         </div>`;
       }
       const used = new Set(); S.nests.forEach(x => { if (x) { used.add(x.a); used.add(x.b); } });
       const sel = ui.nestSel[i] || {};
-      const opts = which => `<option value="">– choose –</option>` + cands.filter(d => !used.has(d.id)).map(d => `<option value="${d.id}" ${+sel[which] === d.id ? 'selected' : ''}>${d.name} · ${d.status === 'adult' ? elName(d.faction) + ' (adult)' : 'pupil'} · ${G.vecText(d.v)}</option>`).join('');
+      const free = cands.filter(d => !used.has(d.id));
+      const opts = which => `<option value="">– choose ${which === 'a' ? 'the first' : 'the second'} dragon –</option>` + free.map(d => `<option value="${d.id}" ${+sel[which] === d.id ? 'selected' : ''}>${d.name} · ${d.status === 'adult' ? elName(d.faction) + ' (adult)' : 'pupil'} · ${G.vecText(d.v)}</option>`).join('');
+      const da = sel.a && S.dragons[sel.a], db = sel.b && S.dragons[sel.b];
       let pv = '';
-      if (sel.a && sel.b && S.dragons[sel.a] && S.dragons[sel.b]) {
+      if (da && db) {
         const v = G.pairValid(+sel.a, +sel.b);
-        pv = v.ok ? previewHtml(G.inheritPreview(S.dragons[sel.a], S.dragons[sel.b])) : `<p class="bad"><b>${v.msg}</b></p>`;
+        pv = v.ok ? previewHtml(G.inheritPreview(da, db)) : `<div class="nwarn">${v.msg}</div>`;
       }
-      return `<div class="panel nest-card"><h3>Nest ${i + 1}</h3>
-        <div class="nest-pair"><select data-nest="${i}" data-which="a" aria-label="First dragon">${opts('a')}</select><div class="nest-heart">${icon('heart', 3)}</div><select data-nest="${i}" data-which="b" aria-label="Second dragon">${opts('b')}</select></div>
-        ${pv}<div class="row"><span class="spacer"></span><button class="btn small" type="button" data-act="pair" data-id="${i}">${icon('heart')} Pair</button></div></div>`;
+      const shadowDragon = { id: 'shadow', name: 'empty perch', v: [0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0], mat: 0, seed: 16, deep: true };
+      const perch = (d, side) => d ? `<span class="nd ${side}">${imgDragon(d, 3, side === 'r')}</span>` : `<span class="nd ${side} ghost">${imgDragon(shadowDragon, 3, side === 'r')}</span>`;
+      return `<div class="panel nest-card empty">
+        <div class="nhead"><b>Nest ${i + 1}</b><span class="nstate idle">empty</span></div>
+        <div class="nscene">${im(SP.nest('#888888', !(da && db), 3), '', 'nbowl')}${perch(da, 'l')}<span class="nheart dim">${icon('heart', 3)}</span>${perch(db, 'r')}</div>
+        ${free.length < 2 ? '<p class="center"><small>Not enough free dragons that can breed.</small></p>' : `<select data-nest="${i}" data-which="a" aria-label="First dragon">${opts('a')}</select><select data-nest="${i}" data-which="b" aria-label="Second dragon">${opts('b')}</select>`}
+        ${pv}
+        <div class="nfoot"><button class="btn small wide" type="button" data-act="pair" data-id="${i}" ${da && db ? '' : 'disabled'}>${icon('heart')} Pair them</button></div>
+      </div>`;
     }).join('');
     return `<div class="screen-head"><h2>Nesting Ground</h2><span class="sub">Pairs from 300 years: pupils, or adults of factions where you are Friendly. Arch-enemies never mate.</span></div>
       ${cands.length ? '' : '<div class="panel empty" style="margin-bottom:14px">No dragons can breed yet. Pupils mature at 300 years (5 minutes).</div>'}
-      <div class="grid cols-2">${nests}</div>`;
+      <div class="nests">${nests}</div>`;
   };
   function previewHtml(pv) {
-    if (pv.pure) return `<div class="preview"><b>Guaranteed purebred: ${elTag(pv.el)}</b></div>`;
-    return `<div class="preview"><small>${icon('lupe')} Possible results (before imprinting)</small>${pv.ranges.map(r => `<div class="rng"><span>${elTag(r.el)}</span><span class="rngbar"><i style="left:${r.min * 5}%;width:${Math.max(2, (r.max - r.min) * 5)}%;background:${EL[r.el].color}"></i></span><span>${r.min * 5}–${r.max * 5} %</span></div>`).join('')}<small>+ ${pct(pv.mutation)} chance of a mutation (new element)</small></div>`;
+    if (pv.pure) return `<div class="preview"><b>${icon('star')} Guaranteed purebred: ${elTag(pv.el)}</b></div>`;
+    return `<div class="preview"><small>${icon('lupe')} Possible results</small>${pv.ranges.map(r => `<div class="rng"><span class="rl">${sw(r.el)} ${elName(r.el)}</span><span class="rngbar"><i style="left:${r.min * 5}%;width:${Math.max(3, (r.max - r.min) * 5)}%;background:${EL[r.el].color}"></i></span><span class="rv">${r.min * 5}–${r.max * 5}%</span></div>`).join('')}<small>+ ${pct(pv.mutation)} mutation chance</small></div>`;
   }
 
   SCREENS.market = function () {
@@ -353,7 +368,7 @@
 
   SCREENS.factions = function () {
     const tab = ui.tabs.factions;
-    const tabs = tabBar('factions', [['overview', 'Overview'], ['matrix', 'Relations'], ['net', 'Network'], ['wars', 'Wars']]);
+    const tabs = tabBar('factions', [['board', 'Activity board'], ['overview', 'Overview'], ['matrix', 'Relations'], ['net', 'Network'], ['wars', 'Wars']]);
     const king = S.king && S.dragons[S.king];
     const l = G.law();
     const al = G.alliances();
@@ -366,7 +381,8 @@
       <div><small>Alliances:</small> ${al.length ? al.map(a => `<span class="tag" style="background:${a.color}">${a.name}</span>`).join(' ') : '<small>none</small>'}</div>
     </div>`;
     let body = '';
-    if (tab === 'overview') body = `<div class="grid cols-2">${EL.map((e, f) => factionCard(f)).join('')}</div>`;
+    if (tab === 'board') body = boardHtml();
+    else if (tab === 'overview') body = `<div class="grid cols-2">${EL.map((e, f) => factionCard(f)).join('')}</div>`;
     else if (tab === 'matrix') body = matrixHtml();
     else if (tab === 'net') body = netHtml();
     else body = S.logs.wars.length ? `<div class="log">${S.logs.wars.map(w => `<div class="li war"><span class="t">${fmtTime(w.t)}</span><span>${elTag(w.attacker)} (power ${w.pa.toFixed(1)}) vs ${elTag(w.defender)} (power ${w.pd.toFixed(1)}) · chance ${pct(w.chance)} · roll ${w.roll.toFixed(3)} → <b>${elName(w.winner)} wins</b>${w.newRuler ? ' · new ruler' : ''}${w.fates.length ? '<br>' + w.fates.map(x => x.name + ': ' + fateText(x.fate)).join(' · ') : ''}</span></div>`).join('')}</div>` : '<div class="empty panel">No war yet.</div>';
@@ -394,6 +410,49 @@
       <div class="acts">${acts}</div>
     </div>`;
   }
+  // the activity board: every faction's current offers in one place
+  const GROUPS = [
+    ['neutral', 'Neutral', 'Only the faction itself reacts.'],
+    ['war', 'War', 'Strong for one faction – everyone else is annoyed.'],
+    ['counter', 'Counter', 'Hurts the target – its enemies are pleased.'],
+    ['group', 'Group', 'Helps several factions at once.'],
+  ];
+  function actEffect(o, f) {
+    const RP = C.activities.rep; const a = G.ACTI[o.id]; const t = o.target != null ? elName(o.target) : '';
+    switch (a.group) {
+      case 'neutral': return `+${RP.neutral} ${elName(f)}`;
+      case 'war': return `+${RP.war} ${elName(f)} · ${RP.warOthers} all others`;
+      case 'counter': return `${RP.counter} ${t || 'target'} · its enemies pleased`;
+      default: return o.id === 'fractalGift' ? `+${RP.group} split by the scale's shares` : `+${RP.group / 2} ${elName(f)}${t ? ' · +' + RP.group / 2 + ' ' + t : ''}`;
+    }
+  }
+  function boardHtml() {
+    const left = Math.max(0, Math.ceil(C.activities.refreshSeconds - (S.played - S.offersAt)));
+    const open = [], locked = [];
+    for (let f = 0; f < NE; f++) (S.access[f] ? open : locked).push(f);
+    const cards = g => {
+      const items = [];
+      open.forEach(f => (S.offers[f] || []).forEach((o, i) => { if (G.ACTI[o.id].group === g) items.push({ f, o, i }); }));
+      if (!items.length) return '<p class="mute center"><small>Nothing posted right now.</small></p>';
+      return items.map(({ f, o, i }) => {
+        const a = G.ACTI[o.id];
+        return `<div class="note ${o.done ? 'done' : ''}" style="--fc:${EL[f].color}">
+          <div class="note-pin"></div>
+          <div class="note-head">${sw(f)} <b>${elName(f)}</b>${o.target != null ? ` <span class="note-tgt">→ ${sw(o.target)} ${elName(o.target)}</span>` : ''}</div>
+          <div class="note-title">${a.name}</div>
+          <small>${a.desc}</small>
+          <div class="note-meta"><span>${actCost(o.id).replace(' · cost: ', '') || 'free'}</span><span class="note-eff">${actEffect(o, f)}</span></div>
+          <button class="btn small ${o.done ? 'ghost' : ''}" type="button" data-act="activity" data-f="${f}" data-i="${i}" ${o.done ? 'disabled' : ''}>${o.done ? '✔ done' : 'Do it'}</button>
+        </div>`;
+      }).join('');
+    };
+    return `<div class="panel board-top"><div><b>${icon('scroll')} Activity board</b><br><small>Each faction you know posts ${C.activities.perFaction} requests. Helping one faction spreads reputation through the relationship matrix – its friends like it, its enemies don't.</small></div>
+        <div class="board-timer"><small>new requests in</small><b data-live="actrefresh"></b></div></div>
+      ${open.length ? '' : '<div class="panel empty" style="margin-top:14px">No faction talks to you yet. Raise a dragon to 1000 years – the faction it joins will start posting requests here.</div>'}
+      ${open.length ? GROUPS.map(g => `<div class="section"><h3>${g[1]}</h3><small>${g[2]}</small></div><div class="board">${cards(g[0])}</div>`).join('') : ''}
+      ${locked.length ? `<div class="section"><h3>Not yet talking to you</h3><small>raise a dragon that joins them</small></div><div class="panel row">${locked.map(f => `<span class="tag">${sw(f)} ${elName(f)}</span>`).join('')}</div>` : ''}`;
+  }
+
   function actCost(id) {
     const c = C.activities.costs;
     const m = { nestCare: c.nestCare + ' G', smallNeed: c.smallNeed + ' G', banner: c.banner + ' G', forgeAlliance: c.alliance + ' G', peace: c.peace + ' G', mixedPool: c.mixedPool + ' G', scaleOffer: c.scaleOffer + ' scales', armor: c.armor + ' war-marked scales', fractalGift: '1 fractal scale' }[id];
@@ -428,9 +487,9 @@
       const col = al ? G.allianceColor(a, b) : r > 0 ? '#3fb85a' : '#ff4d3d';
       if (al) lines += `<line x1="${pos[a][0]}" y1="${pos[a][1]}" x2="${pos[b][0]}" y2="${pos[b][1]}" stroke="#1b1024" stroke-width="10"/>`;
       lines += `<line x1="${pos[a][0]}" y1="${pos[a][1]}" x2="${pos[b][0]}" y2="${pos[b][1]}" stroke="${col}" stroke-width="${al ? 6 : 3}" ${r < 0 ? 'stroke-dasharray="7 5"' : ''}><title>${elName(a)} – ${elName(b)}: ${Math.round(r)}${al ? ' · ' + G.allianceName(a, b) : ''}</title></line>`;
-      if (al) lines += `<text x="${(pos[a][0] + pos[b][0]) / 2}" y="${(pos[a][1] + pos[b][1]) / 2 - 8}" fill="${col}" font-size="18" text-anchor="middle" font-family="Silkscreen" stroke="#1b1024" stroke-width="4" paint-order="stroke" letter-spacing="1">${G.allianceName(a, b)}</text>`;
+      if (al) lines += `<text x="${(pos[a][0] + pos[b][0]) / 2}" y="${(pos[a][1] + pos[b][1]) / 2 - 8}" fill="${col}" font-size="18" text-anchor="middle" font-family="Nunito" font-weight="800" stroke="#1b1024" stroke-width="4" paint-order="stroke" letter-spacing="1">${G.allianceName(a, b)}</text>`;
     }
-    const nodes = EL.map((e, i) => `<g><rect x="${pos[i][0] - 14}" y="${pos[i][1] - 14}" width="28" height="28" rx="4" fill="${e.color}" stroke="${i === S.ruler ? '#ffd23f' : '#1b1024'}" stroke-width="${i === S.ruler ? 5 : 3}"/><text x="${pos[i][0]}" y="${pos[i][1] + (pos[i][1] > cy ? 34 : -22)}" fill="#1b1024" font-size="17" text-anchor="middle" font-family="Silkscreen" letter-spacing="1">${e.name}</text></g>`).join('');
+    const nodes = EL.map((e, i) => `<g><rect x="${pos[i][0] - 14}" y="${pos[i][1] - 14}" width="28" height="28" rx="4" fill="${e.color}" stroke="${i === S.ruler ? '#ffd23f' : '#1b1024'}" stroke-width="${i === S.ruler ? 5 : 3}"/><text x="${pos[i][0]}" y="${pos[i][1] + (pos[i][1] > cy ? 34 : -22)}" fill="#1b1024" font-size="17" text-anchor="middle" font-family="Nunito" font-weight="800" letter-spacing="1">${e.name}</text></g>`).join('');
     return `<div class="panel"><svg class="net" viewBox="0 0 400 380" role="img" aria-label="Faction relationship network">${lines}${nodes}</svg>
       <div class="legend"><span><span class="sw" style="background:#3fb85a"></span> strong liking</span><span><span class="sw" style="background:#ff4d3d"></span> strong dislike</span><span>thick = alliance with its own colour and name</span></div></div>`;
   }
@@ -891,7 +950,7 @@
     { t: 'Breeding & Clutches', i: 'heart', body: () => {
       const ex = expectedClutch();
       return `
-      <p>At the Nest you can pair two dragons aged 300+: your pupils, or grown dragons of factions where you are Friendly (same faction or allied). A pair breeds on average every 50 years – but the spread is huge. Shortly before, the nest turns <b>restless</b>.</p>
+      <p>At the Nest you can pair two dragons aged 300+: your pupils, or grown dragons of factions where you are Friendly (same faction or allied). A new clutch takes <b>at least ${C.breed.minYears} years</b>; after that the wait is random, about ${Math.round(1 / C.breed.chancePerYear)} more years on average – and the spread is huge. Shortly before, the nest turns <b>restless</b>.</p>
       <h3>Four open rolls</h3>
       <p>1. The <b>gate roll</b> 0–6: on 0 the nest goes dark. 2. <b>x</b> from 1–12: that many egg shadows appear. 3. <b>y</b> from 1–x: the extra shadows fade. 4. <b>z</b> from 1–y: the last shadows become real eggs.</p>
       ${fig(im(SP.nest('#3A76E0', false, 2), ''), 'the nest glows in the parents\' blended colour')}

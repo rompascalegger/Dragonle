@@ -679,7 +679,7 @@
     const l = law(); if (l && l.breedMult) p *= l.breedMult;
     return Math.min(0.99, p);
   }
-  function sampleInterval(p) { const u = R(); return Math.max(1, Math.ceil(Math.log(1 - u) / Math.log(1 - p))); }
+  function sampleInterval(p) { const u = R(); return C.breed.minYears + Math.max(0, Math.ceil(Math.log(1 - u) / Math.log(1 - p)) - 1); }
   function setPair(slot, ia, ib) {
     const v = pairValid(ia, ib); if (!v.ok) return v;
     if (S.nests.some((n, i) => n && i !== slot && [n.a, n.b].some(x => x === ia || x === ib))) return { ok: false, msg: 'One dragon is already in another nest.' };
@@ -860,9 +860,10 @@
     for (let f = 0; f < NE; f++) {
       const F = S.factions[f];
       const ad = adultsOf(f);
-      if (F.disturbedUntil <= S.played && ad.length >= 2 && F.nest.length < C.wild.nestCapacity) {
+      if (F.disturbedUntil <= S.played && ad.length >= 2 && F.nest.length < C.wild.nestCapacity && S.played - (F.lastClutch || -1e9) >= C.breed.minYears) {
         const room = Math.max(0, 1 - ad.length / C.factions.capacity);
         if (R() < C.wild.breedChancePerYear * mult * room * dt) {
+          F.lastClutch = S.played;
           const roll = rollClutch('Wild nest ' + EL[f].name);
           S.stats.clutch[roll.z]++; S.stats.clutches++;
           const n = Math.min(roll.z, C.wild.nestCapacity - F.nest.length);
