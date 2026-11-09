@@ -338,6 +338,44 @@
       allianceBoost: 20,
     },
 
+    // ---------------------------------------------------------------- Court & diplomacy
+    diplomacy: {
+      speechEvery: 20,          // the Dragon King speaks every 20 game years
+      ministerEvery: [7, 13],   // a minister speaks between royal speeches (random gap, seconds)
+      decreeEvery: 3,           // every 3rd speech carries a royal decree
+      decreeSeconds: 150,       // how long a decree lasts
+      audienceCost: 150,        // gift for an audience with the king
+      audienceBase: 0.45,       // base chance the king is pleased (+ per reputation level)
+      audiencePerLevel: 0.08,
+      audienceRep: 450,
+      audienceSnub: -150,
+      favourSeconds: 180,       // royal favour: better scale prices
+      favourScaleBonus: 0.15,
+      envoyCooldown: 45,        // seconds between envoys
+      envoy: {
+        alliance: { cost: 400, base: 0.25, relWeight: 1 / 400, success: 30, fail: -6, failRep: -120 },
+        pact:     { cost: 300, base: 0.40, relWeight: 1 / 250, seconds: 600 },
+        peace:    { cost: 250, base: 0.15, kWeight: 0.45, relWeight: 1 / 600, repDefender: 500, repAttacker: 150, failRep: -300 },
+        wedding:  { cost: 900, rel: 35, rep: 300 },
+        tribute:  { cost: 200, rep: 350, need: 30 },
+      },
+      repLevelBonus: 0.04,      // each reputation level above Neutral adds to envoy chances
+      pledgeCost: 250,          // war chest you pledge to one side
+      pledgePower: 0.15,        // the pledged side fights 15 % harder
+      pledgeRep: 900,           // reputation with every faction of the winning pledged side
+      pledgeLoss: -400,         // reputation with the winners if your side loses
+      pledgeSpoils: 2.5,        // gold back (× pledge) if your side wins
+    },
+    // royal decrees: real temporary effects
+    decrees: [
+      { id: 'bounty',  name: 'Scale Bounty',      text: 'The ruler\'s own scales sell for 30 % more.', rulerScale: 0.30 },
+      { id: 'blessing', name: 'Nesting Blessing', text: 'Every pair breeds 25 % more often.', breedMult: 1.25 },
+      { id: 'levy',    name: 'War Levy',          text: 'A further 10 % levy on scale sales.', scaleTax: 0.10 },
+      { id: 'market',  name: 'Royal Market',      text: 'Eggs at the merchant 15 % cheaper.', eggDiscount: 0.15 },
+      { id: 'truce',   name: 'Royal Truce',       text: 'No faction may start a war.', truce: true },
+      { id: 'banners', name: 'Raise the Banners', text: 'Tensions run high: wars break out twice as easily.', warMult: 2 },
+    ],
+
     // ---------------------------------------------------------------- Faction voices [OPEN]
     // Placeholders until the designer decides how factions speak.
     speech: {

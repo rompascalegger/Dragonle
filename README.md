@@ -14,6 +14,10 @@ A dragon world serves as the hub, with portals to twelve elemental zones. You bu
 - **Riddles:** examining an egg gives three uncertain candidates and a riddle in a consistent hint language. A correct label earns school reputation, which makes later riddles clearer.
 - **Factions:** reputation from Hated to Exalted, transferred through an asymmetric relationship matrix; alliances with their own names and colours; 20 activities to court factions; needs, war risk, transparent war rolls, a Dragon King (the eldest of the ruling faction) and laws.
 
+## Court & diplomacy
+
+Every 20 game years the Dragon King gives a speech in the herald bar at the bottom; ministers brief you in between, and every third speech issues a royal decree with a real effect. The Court tab offers audiences with the King, envoys (alliance, pact of peace, royal wedding, tribute), war pledges and peace talks. Battles end in a skippable anime-style cutscene that shows the real power ratio and the decisive roll.
+
 ## Files
 
 | File | What it is |
@@ -23,6 +27,9 @@ A dragon world serves as the hub, with portals to twelve elemental zones. You bu
 | `config.js` | **All balancing numbers** (tagged FIXED / PROPOSAL / OPEN from the design spec) |
 | `core.js` | Game logic without DOM (also runs in Node) |
 | `sprites.js` | Runtime pixel art: dragons, eggs, scales, portals, hatcheries, icons, sky dragons |
+| `voices.js` | The voices of the twelve factions: battle cries, royal openings, declarations, victory and defeat lines |
+| `court.js` | Royal speeches, minister briefings, declarations and laments built from the live state of the realm |
+| `cinema.js` | Anime-style pixel war cutscene: focus lines, champion face-off, VS slam, beam struggle, decisive roll |
 | `ui.js` | Screens, animations, the proportional sky, the 13-chapter Keeper's Handbook and sound |
 | `tools/sim.js`, `tools/sim.html` | Balancing simulation (bot plays for hours, reports population, gold, wars) |
 | `tools/sprites.html` | Sprite sheet for art review |

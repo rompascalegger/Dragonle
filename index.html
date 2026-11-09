@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=3.5.1">
+  <link rel="stylesheet" href="style.css?v=3.6.3">
 </head>
 <body>
   <header class="topbar">
@@ -36,6 +36,12 @@
 
   <main id="view" class="view" tabindex="-1"></main>
 
+  <aside id="herald" class="herald idle" hidden aria-live="polite" title="Click to hurry the speaker">
+    <div class="hp"><img id="herald-img" alt=""></div>
+    <div><div class="hn" id="herald-name"></div><div class="ht" id="herald-text"></div></div>
+    <div class="hb"><button class="tool" id="herald-log" type="button" title="Court record"></button><button class="tool" id="herald-min" type="button" title="Shrink or expand the herald">–</button></div>
+  </aside>
+
   <nav class="nav" aria-label="Areas">
     <button type="button" data-nav="world"><span data-icon="world" data-scale="3"></span>World</button>
     <button type="button" data-nav="school"><span data-icon="school" data-scale="3"></span>School</button>
@@ -56,9 +62,12 @@
   <div id="toasts" class="toasts" aria-live="polite"></div>
   <div id="flash" class="flash" aria-hidden="true"></div>
 
-  <script src="config.js?v=3.5.1"></script>
-  <script src="core.js?v=3.5.1"></script>
-  <script src="sprites.js?v=3.5.1"></script>
-  <script src="ui.js?v=3.5.1"></script>
+  <script src="config.js?v=3.6.3"></script>
+  <script src="core.js?v=3.6.3"></script>
+  <script src="sprites.js?v=3.6.3"></script>
+  <script src="voices.js?v=3.6.3"></script>
+  <script src="court.js?v=3.6.3"></script>
+  <script src="cinema.js?v=3.6.3"></script>
+  <script src="ui.js?v=3.6.3"></script>
 </body>
 </html>

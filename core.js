@@ -309,7 +309,7 @@
   function todayStr() { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
   function lawOf(f) { return C.laws[EL[f].id] || null; }
   function law() { return lawOf(S.ruler); }
-  function eggPrice(cls) { const l = law(); return Math.round(CLS[cls].price * (1 - ((l && l.eggDiscount) || 0))); }
+  function eggPrice(cls) { const l = law(); const dc = decree(); return Math.round(CLS[cls].price * (1 - ((l && l.eggDiscount) || 0) - ((dc && dc.eggDiscount) || 0))); }
   function refreshOffers() {
     const M = S.market;
     M.offers = M.offers.filter(o => o.expires > S.played);
@@ -610,8 +610,12 @@
     return 1 + (C.scales.rulerDemand - 1) * share(r) + (C.scales.rulerEnemyDemand - 1) * share(enemyOf(r));
   }
   function scaleSalePrice(s) {
-    const l = law();
-    return Math.max(1, Math.round(scaleValue(s) * demandOf(s) * (1 - ((l && l.scaleTax) || 0))));
+    const l = law(); const dc = decree();
+    const share = s.fractal ? s.v[S.ruler] / STEPS : (s.el === S.ruler ? 1 : 0);
+    const bounty = 1 + ((dc && dc.rulerScale) || 0) * share;
+    const favour = D().favourUntil > S.played ? 1 + C.diplomacy.favourScaleBonus : 1;
+    const tax = ((l && l.scaleTax) || 0) + ((dc && dc.scaleTax) || 0);
+    return Math.max(1, Math.round(scaleValue(s) * demandOf(s) * bounty * favour * (1 - tax)));
   }
   function collect(zoneId, scaleId) {
     const z = S.zones[zoneId]; if (!z || !zoneOpen(z)) return { ok: false, msg: 'The portal is closed.' };
@@ -678,6 +682,7 @@
     let p = C.breed.chancePerYear;
     if (a.status === 'adult' || b.status === 'adult') p *= C.breed.adultBoost;
     const l = law(); if (l && l.breedMult) p *= l.breedMult;
+    const dc = decree(); if (dc && dc.breedMult) p *= dc.breedMult;
     return Math.min(0.99, p);
   }
   function sampleInterval(p) { const u = R(); return C.breed.minYears + Math.max(0, Math.ceil(Math.log(1 - u) / Math.log(1 - p)) - 1); }
@@ -798,13 +803,17 @@
       if (W.phase === 'announce' && W.t >= C.war.announceSeconds) {
         // allies who formed an alliance during the threat still rally to their friends
         const sides = warSides(W.attacker, W.defender); W.sa = sides.sa; W.sd = sides.sd;
-        W.phase = 'fight'; W.t = 0; emit('warFight', { sa: W.sa, sd: W.sd });
+        W.phase = 'fight'; W.t = 0; W.ca = champion(W.attacker); W.cd = champion(W.defender);
+        emit('warFight', { sa: W.sa, sd: W.sd, attacker: W.attacker, defender: W.defender, ca: W.ca, cd: W.cd, pledge: W.pledge || null });
       }
       else if (W.phase === 'fight' && W.t >= (W.fight || C.war.fightSeconds)) resolveWar();
       return;
     }
     S.warCooldown -= dt;
     if (S.warCooldown > 0) return;
+    const dc = decree();
+    if (dc && dc.truce) return;
+    const warMult = (dc && dc.warMult) || 1;
     for (let f = 0; f < NE; f++) {
       const N = adultsOf(f).length; if (!N) continue;
       const risk = warRisk(f);
@@ -812,13 +821,13 @@
         S.factions[f].warned = S.played;
         emit('speech', { f, text: C.speech.warn.replace('{f}', EL[f].name) });
       }
-      if (R() < risk * C.war.baseRate * dt) {
+      if (R() < risk * C.war.baseRate * warMult * dt) {
         let def = S.ruler;
         if (f === S.ruler || allied(f, S.ruler)) {
           let worst = 1e9; def = -1;
-          for (let g = 0; g < NE; g++) if (g !== f && !allied(f, g) && adultsOf(g).length && S.rel[f][g] < worst) { worst = S.rel[f][g]; def = g; }
+          for (let g = 0; g < NE; g++) if (g !== f && !allied(f, g) && !hasPact(f, g) && adultsOf(g).length && S.rel[f][g] < worst) { worst = S.rel[f][g]; def = g; }
         }
-        if (def < 0 || def === f) continue;
+        if (def < 0 || def === f || hasPact(f, def)) continue;
         let total = 0; for (let g = 0; g < NE; g++) total += adultsOf(g).length;
         const pressure = Math.max(1, total / (C.factions.capacity * NE));
         const sides = warSides(f, def);
@@ -832,7 +841,10 @@
   function resolveWar() {
     const W = S.war; const A = W.attacker, D = W.defender;
     const sa = (W.sa || [A]).filter(f => !S.factions[f].ended), sd = (W.sd || [D]).filter(f => !S.factions[f].ended);
-    const pa = sidePower(sa, A), pd = sidePower(sd, D);
+    let pa = sidePower(sa, A), pd = sidePower(sd, D);
+    if (W.pledge === 'a') pa *= 1 + C.diplomacy.pledgePower;
+    if (W.pledge === 'd') pd *= 1 + C.diplomacy.pledgePower;
+    const ca = W.ca || champion(A), cd = W.cd || champion(D);
     const chance = pa + pd > 0 ? pa / (pa + pd) : 0.5;
     const roll = R();
     logRoll('War ' + sideName(sa) + ' vs ' + sideName(sd), Math.round(roll * 1000) / 1000, '< ' + chance.toFixed(3) + ' = attackers win');
@@ -880,7 +892,15 @@
     const collapsed = [];
     lside.forEach(f => { if (adultsOf(f).length < C.war.collapseBelow) { endFaction(f, 'lost the war'); collapsed.push(f); } });
     S.stats.wars++;
-    const res = { attacker: A, defender: D, sa, sd, chance, roll, attackerWins, winner, loser, wside, lside, losses, collapsed, fates, newRuler, pa, pd, t: Math.round(S.played) };
+    let pledge = null;
+    if (W.pledge) {
+      const won = (W.pledge === 'a') === attackerWins;
+      if (won) { wside.forEach(f => addRep(f, C.diplomacy.pledgeRep, false)); const spoils = Math.round(W.pledgeGold * C.diplomacy.pledgeSpoils); S.gold += spoils; pledge = { side: W.pledge, won, spoils }; }
+      else { wside.forEach(f => addRep(f, C.diplomacy.pledgeLoss, false)); pledge = { side: W.pledge, won, spoils: 0 }; }
+    }
+    if (ca) ca.fallen = !S.dragons[ca.id];
+    if (cd) cd.fallen = !S.dragons[cd.id];
+    const res = { attacker: A, defender: D, sa, sd, chance, roll, attackerWins, winner, loser, wside, lside, losses, collapsed, fates, newRuler, pa, pd, ca, cd, pledge, t: Math.round(S.played) };
     S.logs.wars.unshift(res); if (S.logs.wars.length > 50) S.logs.wars.length = 50;
     let total = 0; for (let f = 0; f < NE; f++) total += adultsOf(f).length;
     const pressure = Math.max(1, total / (C.factions.capacity * NE));
@@ -888,6 +908,132 @@
     logEvent('War: ' + sideName(wside) + ' defeat ' + sideName(lside), 'war');
     updateRoles(false);
     emit('warResult', res);
+  }
+
+  // ------------------------------------------------------------ Court & diplomacy
+  function D() {
+    if (!S.dip) S.dip = { pacts: [], favourUntil: 0, decree: null, speechT: 0, speechN: 0, ministerT: 9, envoyAt: -1e9, court: [] };
+    return S.dip;
+  }
+  function decree() { const d = D().decree; return d && d.until > S.played ? C.decrees.find(x => x.id === d.id) || null : null; }
+  function hasPact(a, b) { return D().pacts.some(p => p.until > S.played && ((p.a === a && p.b === b) || (p.a === b && p.b === a))); }
+  function champion(f) {
+    const a = adultsOf(f); if (!a.length) return null;
+    const d = a.reduce((m, x) => (x.t1000 > m.t1000 ? x : m)); // the youngest adult is the strongest
+    const k = f === S.ruler && S.king ? S.dragons[S.king] : eldest(f);
+    return { id: d.id, name: d.name, v: d.v.slice(), mat: d.mat, seed: d.seed, deep: d.deep, f, str: strength(d), king: k ? k.name : null };
+  }
+  function repBonus(f) { return Math.max(0, repLevel(f) - REPI.neutral) * C.diplomacy.repLevelBonus; }
+  function updateCourt(dt) {
+    const dp = D(); const DC = C.diplomacy;
+    dp.pacts = dp.pacts.filter(p => p.until > S.played);
+    dp.speechT += dt;
+    if (dp.speechT >= DC.speechEvery) {
+      dp.speechT = 0; dp.speechN++;
+      let dec = null;
+      if (dp.speechN % DC.decreeEvery === 0 && S.king) {
+        const harsh = S.factions[S.ruler].k < 0.3;
+        const d = C.decrees[weighted(C.decrees.map(x => (harsh && (x.scaleTax || x.warMult) ? 3 : 1)))];
+        dp.decree = { id: d.id, until: S.played + DC.decreeSeconds, by: S.ruler };
+        dec = d.id;
+        logEvent('Royal decree: ' + d.name + ' – ' + d.text, 'epic');
+      }
+      emit('royalSpeech', { king: S.king, f: S.ruler, decree: dec, n: dp.speechN });
+    }
+    dp.ministerT -= dt;
+    if (dp.ministerT <= 0) {
+      dp.ministerT = ri(DC.ministerEvery[0], DC.ministerEvery[1]);
+      if (S.gov.length && dp.speechT > 3 && dp.speechT < DC.speechEvery - 3) emit('ministerSpeech', { id: pick(S.gov) });
+    }
+  }
+  function audience() {
+    const DC = C.diplomacy; const k = S.king && S.dragons[S.king];
+    if (!k) return { ok: false, msg: 'There is no king to receive you.' };
+    if (!pay(DC.audienceCost)) return { ok: false, msg: 'Not enough gold for a royal gift (' + DC.audienceCost + ' G).' };
+    const chance = clamp(DC.audienceBase + DC.audiencePerLevel * (repLevel(S.ruler) - REPI.neutral), 0.05, 0.95);
+    const roll = R();
+    logRoll('Audience with ' + k.name, Math.round(roll * 1000) / 1000, '< ' + chance.toFixed(2) + ' = pleased');
+    const pleased = roll < chance;
+    if (pleased) { addRep(S.ruler, DC.audienceRep); D().favourUntil = S.played + DC.favourSeconds; }
+    else addRep(S.ruler, DC.audienceSnub, false);
+    logEvent('Audience with ' + k.name + ': ' + (pleased ? 'the king is pleased' : 'the king is unimpressed'), pleased ? 'good' : 'bad');
+    tut('activity');
+    return { ok: true, pleased, chance, roll, king: k.id, f: S.ruler };
+  }
+  function envoyChance(type, a, b) {
+    const E = C.diplomacy.envoy;
+    if (type === 'alliance') return clamp(E.alliance.base + (S.rel[a][b] + S.rel[b][a]) * E.alliance.relWeight + repBonus(a) + repBonus(b), 0.03, 0.92);
+    if (type === 'pact') return clamp(E.pact.base + (S.rel[a][b] + S.rel[b][a]) * E.pact.relWeight + repBonus(a) + repBonus(b), 0.05, 0.95);
+    if (type === 'peace') {
+      const W = S.war; if (!W) return 0; const A = W.attacker, Df = W.defender;
+      return clamp(E.peace.base + S.factions[A].k * E.peace.kWeight + (S.rel[A][Df] + 100) * E.peace.relWeight + repBonus(A) + repBonus(Df) / 2, 0.03, 0.85);
+    }
+    return 1;
+  }
+  const alive = f => f != null && f >= 0 && f < NE && !S.factions[f].ended && adultsOf(f).length > 0;
+  function envoyCheck(type, a, b) {
+    const left = C.diplomacy.envoyCooldown - (S.played - D().envoyAt);
+    if (left > 0) return 'Your envoys are still travelling (' + Math.ceil(left) + ' s).';
+    if (type === 'peace') {
+      if (!S.war || S.war.phase !== 'announce') return 'Peace can only be brokered while a war is being threatened.';
+      if (!S.access[S.war.attacker] && !S.access[S.war.defender]) return 'Neither side will receive your envoy.';
+      return null;
+    }
+    if (!alive(a)) return 'That faction cannot receive envoys.';
+    if (type === 'tribute') return S.access[a] ? null : 'Raise a dragon for ' + EL[a].name + ' first.';
+    if (!alive(b) || a === b) return 'Choose two different, living factions.';
+    if (!S.access[a] && !S.access[b]) return 'You need access to at least one of the two factions.';
+    if (type === 'alliance') { if (isEnemy(a, b)) return 'Arch-enemies never ally.'; if (allied(a, b)) return 'They are already allied.'; }
+    if (type === 'pact' && hasPact(a, b)) return 'They already have a pact.';
+    if (type === 'wedding' && isEnemy(a, b)) return 'Arch-enemies never wed.';
+    return null;
+  }
+  function envoy(type, a, b) {
+    const E = C.diplomacy.envoy[type]; if (!E) return { ok: false };
+    const err = envoyCheck(type, a, b); if (err) return { ok: false, msg: err };
+    if (!pay(E.cost)) return { ok: false, msg: 'Not enough gold (' + E.cost + ' G).' };
+    D().envoyAt = S.played;
+    const chance = envoyChance(type, a, b);
+    const roll = type === 'alliance' || type === 'pact' || type === 'peace' ? R() : 0;
+    const success = roll < chance;
+    const out = { ok: true, type, a, b, chance, roll, success };
+    if (type === 'alliance' || type === 'pact' || type === 'peace') logRoll('Envoy (' + type + ')', Math.round(roll * 1000) / 1000, '< ' + chance.toFixed(2) + ' = success');
+    if (type === 'alliance') {
+      if (success) { changeRel(a, b, E.success); out.forged = allied(a, b); logEvent('Envoy: ' + EL[a].name + ' and ' + EL[b].name + ' draw closer' + (out.forged ? ' – alliance ' + allianceName(a, b) + ' forged!' : ''), 'good'); }
+      else { changeRel(a, b, E.fail); addRep(a, E.failRep, false); addRep(b, E.failRep, false); logEvent('Envoy rebuffed by ' + EL[a].name + ' and ' + EL[b].name, 'bad'); }
+    } else if (type === 'pact') {
+      if (success) { D().pacts.push({ a, b, until: S.played + E.seconds }); logEvent('Pact of peace: ' + EL[a].name + ' and ' + EL[b].name, 'good'); }
+      else logEvent('No pact between ' + EL[a].name + ' and ' + EL[b].name, 'bad');
+    } else if (type === 'peace') {
+      const W = S.war; out.a = W.attacker; out.b = W.defender;
+      if (success) {
+        D().pacts.push({ a: W.attacker, b: W.defender, until: S.played + C.diplomacy.envoy.pact.seconds });
+        addRep(W.defender, E.repDefender); addRep(W.attacker, E.repAttacker);
+        if (W.pledge) { S.gold += W.pledgeGold; out.refund = W.pledgeGold; } // no war, the war chest comes home
+        S.war = null; S.warCooldown = Math.max(S.warCooldown, C.war.cooldownSeconds);
+        logEvent('Peace brokered between ' + EL[out.a].name + ' and ' + EL[out.b].name + '!', 'epic');
+        emit('peace', { a: out.a, b: out.b });
+      } else { addRep(W.attacker, E.failRep, false); logEvent('Peace talks failed – ' + EL[W.attacker].name + ' is insulted', 'bad'); }
+    } else if (type === 'wedding') {
+      const ea = eldest(a), eb = eldest(b);
+      out.bride = ea ? ea.name : '?'; out.groom = eb ? eb.name : '?';
+      changeRel(a, b, E.rel); addRep(a, E.rep); addRep(b, E.rep);
+      out.forged = allied(a, b);
+      logEvent('Royal wedding: ' + out.bride + ' of ' + EL[a].name + ' and ' + out.groom + ' of ' + EL[b].name, 'epic');
+    } else if (type === 'tribute') {
+      addRep(a, E.rep); S.factions[a].needs.tribut = Math.min(100, S.factions[a].needs.tribut + E.need);
+      logEvent('Tribute sent to ' + EL[a].name, 'good');
+    }
+    tut('activity');
+    return out;
+  }
+  function pledge(side) {
+    const W = S.war; if (!W) return { ok: false, msg: 'There is no war to pledge to.' };
+    if (W.pledge) return { ok: false, msg: 'You have already pledged your war chest.' };
+    if (!pay(C.diplomacy.pledgeCost)) return { ok: false, msg: 'Not enough gold (' + C.diplomacy.pledgeCost + ' G).' };
+    W.pledge = side; W.pledgeGold = C.diplomacy.pledgeCost;
+    logEvent('You pledge your war chest to ' + (side === 'a' ? 'the attackers' : 'the defenders'), 'war');
+    return { ok: true };
   }
 
   // ------------------------------------------------------------ Exile, collapse and reformation
@@ -1211,6 +1357,7 @@
     updateRelations(dt);
     updateWar(dt);
     updateExiles(dt);
+    updateCourt(dt);
     updatePortals(dt);
     // market
     const decay = Math.pow(0.5, dt / C.market.saturationHalfLife);
@@ -1244,6 +1391,8 @@
     // actions
     buyEgg, claimWonder, sellEgg, examine, setLabel, incubate, buySlot, hatch, collect, sellScales, sellAllScales,
     setPair, clearPair, buyPortal, buyBackdoor, toggleBackdoor, doActivity, refreshActivities,
+    // court & diplomacy
+    dip: () => D(), decree, hasPact, champion, audience, envoy, envoyChance, envoyCheck, pledge,
     // tests & simulation
     _rollClutch: rollClutch, _inherit: inherit, _genVector: genVector, _R: () => R(),
   };

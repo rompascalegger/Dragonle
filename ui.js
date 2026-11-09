@@ -9,7 +9,7 @@
   const SPEED = Math.max(1, Math.min(200, +params.get('speed') || 1)); // test aid: ?speed=20
   const view = $('#view');
 
-  const ui = { screen: 'world', zone: null, tabs: { school: 'chamber', factions: 'board', bag: 'scales', log: 'breed' }, dfilter: { who: 'all', f: '', sort: 'old', limit: 120 }, last: '', queue: [], modal: null, combo: { n: 0, t: 0 }, nestSel: {}, skip: false };
+  const ui = { screen: 'world', zone: null, tabs: { school: 'chamber', factions: 'court', bag: 'scales', log: 'breed' }, dfilter: { who: 'all', f: '', sort: 'old', limit: 120 }, last: '', queue: [], modal: null, combo: { n: 0, t: 0 }, nestSel: {}, envoy: { type: 'alliance', a: '', b: '' }, skip: false };
   let S;
 
   // ------------------------------------------------------------ saving & start
@@ -106,6 +106,53 @@
     while ($('#toasts').children.length > 4) $('#toasts').firstChild.remove();
   }
   function flash() { if (!S.settings.flash) return; const f = $('#flash'); f.classList.remove('on'); void f.offsetWidth; f.classList.add('on'); }
+
+  // ------------------------------------------------------------ the royal herald (speeches at the bottom)
+  const herald = { q: [], busy: false, hurry: false };
+  function sayCourt(sp) {
+    if (!sp || !sp.lines || !sp.lines.length) return;
+    const dp = G.dip();
+    dp.court.unshift({ t: Math.round(S.played), f: sp.f, kind: sp.kind, name: sp.name, role: sp.role, text: sp.lines.join(' ') });
+    if (dp.court.length > 80) dp.court.length = 80;
+    // royal words jump the queue, chatter waits
+    if (sp.kind === 'minister') herald.q.push(sp); else herald.q.unshift(sp);
+    if (herald.q.length > 3) herald.q.length = 3;
+    if (!herald.busy) heraldNext();
+  }
+  const hwait = ms => new Promise(res => { const t0 = performance.now(); const id = setInterval(() => { if (herald.hurry || performance.now() - t0 >= ms) { clearInterval(id); res(); } }, 30); });
+  function heraldLayout() {
+    const h = $('#herald'); const min = !!S.settings.heraldMin;
+    h.classList.toggle('min', min);
+    document.body.classList.toggle('has-herald', !h.hidden);
+    document.body.classList.toggle('herald-min', min);
+    $('#herald-min').textContent = min ? '+' : '–';
+  }
+  async function heraldNext() {
+    const sp = herald.q.shift(); const h = $('#herald');
+    if (!sp) { herald.busy = false; h.classList.add('idle'); return; }
+    herald.busy = true; h.hidden = false;
+    h.className = 'herald ' + sp.kind;
+    heraldLayout();
+    h.style.setProperty('--c', EL[sp.f].color);
+    if (sp.who) { const pic = SP.dragon(sp.who, 2); const img = $('#herald-img'); img.src = pic.src; img.width = pic.w; img.height = pic.h; }
+    $('#herald-name').innerHTML = `${sp.name} <small>${sp.role}</small>`;
+    const tx = $('#herald-text');
+    if (sp.kind === 'king') Snd.seq([392, 523, 659, 784], 0.09, 'triangle', 0.045);
+    else if (sp.kind === 'war') Snd.drum();
+    for (const line of sp.lines) {
+      herald.hurry = false; tx.textContent = '';
+      for (let i = 1; i <= line.length; i++) {
+        if (herald.hurry) { tx.textContent = line; break; }
+        tx.textContent = line.slice(0, i);
+        if (sp.kind !== 'minister' && i % 4 === 0) Snd.tone(sp.kind === 'war' ? 160 : 220 + (i % 12) * 6, 0.02, 'square', 0.012);
+        await new Promise(r => setTimeout(r, 26));
+      }
+      herald.hurry = false;
+      await hwait(Math.min(4500, 1300 + line.length * 32));
+    }
+    herald.hurry = false;
+    heraldNext();
+  }
   function showModal(m, front) { if (front) ui.queue.unshift(m); else ui.queue.push(m); if (!ui.modal) nextModal(); }
   function nextModal() {
     const m = ui.queue.shift();
@@ -144,6 +191,11 @@
       case 'nest': { const n = S.nests[+p[1]]; return n ? (G.nestRestless(n) ? 'restless!' : 'calm') : ''; }
       case 'actrefresh': { const l = Math.max(0, Math.ceil(C.activities.refreshSeconds - (S.played - S.offersAt))); return Math.floor(l / 60) + ':' + String(l % 60).padStart(2, '0'); }
       case 'wonder': return G.wonderAvailable() ? 'ready!' : 'back tomorrow';
+      case 'decree': { const d = G.dip().decree; return d && d.until > S.played ? Math.ceil(d.until - S.played) + ' s left' : ''; }
+      case 'favour': { const u = G.dip().favourUntil; return u > S.played ? 'Royal favour: scales +' + Math.round(C.diplomacy.favourScaleBonus * 100) + ' % · ' + Math.ceil(u - S.played) + ' s' : 'No royal favour'; }
+      case 'envoycd': { const l = Math.ceil(C.diplomacy.envoyCooldown - (S.played - G.dip().envoyAt)); return l > 0 ? 'envoys travelling · ' + l + ' s' : 'envoys ready'; }
+      case 'warleft': { const W = S.war; if (!W) return ''; return W.phase === 'announce' ? 'war breaks out in ' + Math.ceil(C.war.announceSeconds - W.t) + ' s' : 'battle rages · ' + Math.ceil((W.fight || C.war.fightSeconds) - W.t) + ' s'; }
+      case 'nextspeech': return Math.max(0, Math.ceil(C.diplomacy.speechEvery - G.dip().speechT)) + ' yrs';
       default: return '';
     }
   }
@@ -372,7 +424,7 @@
 
   SCREENS.factions = function () {
     const tab = ui.tabs.factions;
-    const tabs = tabBar('factions', [['board', 'Activity board'], ['overview', 'Overview'], ['matrix', 'Relations'], ['net', 'Network'], ['wars', 'Wars']]);
+    const tabs = tabBar('factions', [['court', 'Court & diplomacy'], ['board', 'Activity board'], ['overview', 'Overview'], ['matrix', 'Relations'], ['net', 'Network'], ['wars', 'Wars']]);
     const king = S.king && S.dragons[S.king];
     const l = G.law();
     const al = G.alliances();
@@ -385,13 +437,85 @@
       <div><small>Alliances:</small> ${al.length ? al.map(a => `<span class="tag" style="background:${a.color}">${a.name}</span>`).join(' ') : '<small>none</small>'}</div>
     </div>`;
     let body = '';
-    if (tab === 'board') body = boardHtml();
+    if (tab === 'court') body = courtHtml();
+    else if (tab === 'board') body = boardHtml();
     else if (tab === 'overview') body = `<div class="grid cols-2">${EL.map((e, f) => factionCard(f)).join('')}</div>`;
     else if (tab === 'matrix') body = matrixHtml();
     else if (tab === 'net') body = netHtml();
     else body = S.logs.wars.length ? `<div class="log">${S.logs.wars.map(w => `<div class="li war"><span class="t">${fmtTime(w.t)}</span><span>${sideTags(sideOf(w, 'a'))} (power ${w.pa.toFixed(1)}) vs ${sideTags(sideOf(w, 'd'))} (power ${w.pd.toFixed(1)}) · chance ${pct(w.chance)} · roll ${w.roll.toFixed(3)} → <b>${sideTxt(w.wside || [w.winner])} win</b>${w.newRuler ? ' · new ruler' : ''}${(w.collapsed || []).length ? ' · <b class="bad">' + sideTxt(w.collapsed) + ' fell</b>' : ''}${w.fates.length ? '<br>' + w.fates.map(x => x.name + ': ' + fateText(x.fate)).join(' · ') : ''}</span></div>`).join('')}</div>` : '<div class="empty panel">No war yet.</div>';
     return `<div class="screen-head"><h2>The Factions</h2><span class="sub">Twelve elements fight over the sky.</span></div>${head}<div style="height:16px"></div>${tabs}${body}`;
   };
+  const livingF = () => EL.map((e, f) => f).filter(f => !S.factions[f].ended && G.adultsOf(f).length);
+  const ENVOY = {
+    alliance: { name: 'Forge an alliance', two: true, desc: 'Persuade two factions to stand together. Success: +' + C.diplomacy.envoy.alliance.success + ' relation both ways – maybe a new named alliance. Failure annoys both.' },
+    pact: { name: 'Pact of peace', two: true, desc: 'Neither may declare war on the other for ' + Math.round(C.diplomacy.envoy.pact.seconds / 60) + ' minutes.' },
+    wedding: { name: 'Royal wedding', two: true, desc: 'Wed the eldest of two houses. Always succeeds: +' + C.diplomacy.envoy.wedding.rel + ' relation, reputation with both.' },
+    tribute: { name: 'Send tribute', two: false, desc: 'A chest of gold for one faction: +' + C.diplomacy.envoy.tribute.rep + ' reputation, tribute need rises.' },
+  };
+  function courtHtml() {
+    const k = S.king && S.dragons[S.king]; const v = Court.voice(S.ruler); const dc = G.decree(); const dp = G.dip(); const DC = C.diplomacy;
+    const aChance = Math.max(0.05, Math.min(0.95, DC.audienceBase + DC.audiencePerLevel * (G.repLevel(S.ruler) - G.REPI.neutral)));
+    const l = G.law() || C.lawPlaceholder;
+    const throne = `<div class="panel throne">
+      <div class="seat">${k ? imgDragon(k, 5) : ''}<span class="crown">${icon('crown', 4)}</span></div>
+      <div><div class="epithet">${v.title.toUpperCase()}</div><h3>${k ? '♛ ' + k.name + ' ' + v.epithet : 'The throne stands empty'}</h3>
+        <p>Dragon King of ${elTag(S.ruler)}${k ? ' · <span data-live="age:' + k.id + '"></span>' : ''} · next speech in <b data-live="nextspeech"></b></p>
+        <p>${icon('scroll')} <b>${l.name}</b> – ${l.text}</p>
+        ${dc ? `<div class="decree">📜 <b>Royal decree: ${dc.name}</b> – ${dc.text} <small>(<span data-live="decree"></span>)</small></div>` : '<p><small>No decree is in force. Every ' + DC.decreeEvery + 'rd speech brings one.</small></p>'}
+        <p><small data-live="favour"></small></p>
+        <div class="row"><button class="btn" type="button" data-act="audience" ${k ? '' : 'disabled'}>${icon('crown')} Request an audience · ${DC.audienceCost} G</button><small>chance the king is pleased: <b>${pct(aChance)}</b> → +${DC.audienceRep} reputation and royal favour</small></div>
+      </div></div>`;
+    const ministers = S.gov.map(id => S.dragons[id]).filter(Boolean).map((d, i) => {
+      const off = DRAGONLE_VOICES.MINISTERS[(Math.max(0, S.gov.indexOf(d.id)) + d.seed) % DRAGONLE_VOICES.MINISTERS.length];
+      const said = dp.court.find(c => c.name === d.name);
+      return `<div class="panel minister"><div class="pic" data-act="dragon" data-id="${d.id}">${imgDragon(d, 2)}</div><div><div class="office">${off.office.toUpperCase()}</div><b>${d.name}</b> <small>of ${elName(d.faction)}</small>${said ? `<q>${said.text}</q>` : '<q>…has not spoken yet.</q>'}</div></div>`;
+    }).join('');
+    let warroom = '';
+    if (S.war) {
+      const W = S.war; const sa = sideOf(W, 'a'), sd = sideOf(W, 'd');
+      const pChance = G.envoyChance('peace');
+      warroom = `<div class="section"><h3>${icon('sword')} War room</h3><small data-live="warleft"></small></div>
+      <div class="panel warroom"><div class="sides"><div>${sideTags(sa)}<br><small>attackers</small></div><div class="vs">VS</div><div>${sideTags(sd)}<br><small>defenders</small></div></div>
+        <div class="row" style="justify-content:center;margin-top:10px">
+          ${W.pledge ? `<b>Your war chest backs the ${W.pledge === 'a' ? 'attackers' : 'defenders'} (+${pct(DC.pledgePower)} power).</b>` : `<button class="btn ember" type="button" data-act="pledge" data-side="a">Pledge to the attackers · ${DC.pledgeCost} G</button><button class="btn ember" type="button" data-act="pledge" data-side="d">Pledge to the defenders · ${DC.pledgeCost} G</button>`}
+          ${W.phase === 'announce' ? `<button class="btn go" type="button" data-act="peace">${icon('peace')} Broker peace · ${DC.envoy.peace.cost} G · ${pct(pChance)}</button>` : ''}
+        </div>
+        <p class="center"><small>A pledged side fights ${pct(DC.pledgePower)} harder. If it wins: +${DC.pledgeRep} reputation with every winner and ${DC.pledgeSpoils}× your gold back. If it loses, the winners remember (${DC.pledgeLoss}).</small></p></div>`;
+    }
+    const fs = livingF(); const ev = ui.envoy;
+    if (ev.a === '' || !fs.includes(+ev.a)) ev.a = String(fs.find(f => S.access[f]) != null ? fs.find(f => S.access[f]) : (fs[0] != null ? fs[0] : ''));
+    if (ev.b === '' || !fs.includes(+ev.b) || +ev.b === +ev.a) ev.b = String(fs.find(f => f !== +ev.a && !G.isEnemy(f, +ev.a)) != null ? fs.find(f => f !== +ev.a && !G.isEnemy(f, +ev.a)) : '');
+    const E = ENVOY[ev.type]; const cost = DC.envoy[ev.type].cost;
+    const travelling = S.played - dp.envoyAt < DC.envoyCooldown;
+    let err = ev.a === '' ? 'No faction can receive envoys.' : G.envoyCheck(ev.type, +ev.a, +ev.b);
+    if (err && err.indexOf('travelling') >= 0) err = null; // the live label counts down instead
+    const chance = ev.type === 'alliance' || ev.type === 'pact' ? G.envoyChance(ev.type, +ev.a, +ev.b) : 1;
+    const fOpt = (sel, skipF) => fs.filter(f => f !== skipF).map(f => `<option value="${f}" ${+sel === f ? 'selected' : ''}>${elName(f)}${S.access[f] ? '' : ' (no access)'}</option>`).join('');
+    const envoy = `<div class="panel envoy">
+      <div class="pickrow">
+        <select data-envoy="type" aria-label="Envoy mission">${Object.keys(ENVOY).map(t => `<option value="${t}" ${ev.type === t ? 'selected' : ''}>${ENVOY[t].name}</option>`).join('')}</select>
+        <select data-envoy="a" aria-label="First faction">${fOpt(ev.a)}</select>
+        ${E.two ? `<select data-envoy="b" aria-label="Second faction">${fOpt(ev.b, +ev.a)}</select>` : '<span></span>'}
+      </div>
+      <small>${E.desc}</small>
+      ${E.two && ev.b !== '' ? `<small>Relations now: ${elName(+ev.a)} → ${elName(+ev.b)} <b>${Math.round(S.rel[+ev.a][+ev.b])}</b> · ${elName(+ev.b)} → ${elName(+ev.a)} <b>${Math.round(S.rel[+ev.b][+ev.a])}</b>${G.allied(+ev.a, +ev.b) ? ' · allied' : ''}${G.hasPact(+ev.a, +ev.b) ? ' · pact' : ''}</small>` : ''}
+      <div class="row"><span class="odds">${err ? '' : (chance < 1 ? pct(chance) + ' chance' : 'certain')}</span><span class="spacer"></span><small data-live="envoycd"></small><button class="btn go" type="button" data-act="envoy" ${err || travelling ? 'disabled' : ''}>${icon('scroll')} Send envoy · ${cost} G</button></div>
+      ${err ? `<small class="bad"><b>${err}</b></small>` : ''}
+    </div>`;
+    const pacts = dp.pacts.filter(x => x.until > S.played);
+    const pactHtml = pacts.length ? pacts.map(x => `<span class="tag">${elTag(x.a)} ✦ ${elTag(x.b)} · ${Math.ceil((x.until - S.played) / 60)} min</span>`).join(' ') : '<small>No pacts in force.</small>';
+    const record = dp.court.slice(0, 6).map(c => `<div class="cl" style="--c:${EL[c.f].color}"><b>${c.name}</b> <small>${c.role}</small><br>${c.text}</div>`).join('') || '<div class="empty">The court has not spoken yet.</div>';
+    return `${throne}
+      ${ministers ? `<div class="section"><h3>The government</h3><small>the King's ministers – often mixed dragons, for diplomacy</small></div><div class="grid cols-2">${ministers}</div>` : ''}
+      ${warroom}
+      <div class="section"><h3>${icon('scroll')} The envoy desk</h3><small>diplomacy is rolled openly – see the Log</small></div>${envoy}
+      <div class="section"><h3>Pacts of peace</h3></div><div class="panel">${pactHtml}</div>
+      <div class="section"><h3>Court record</h3><button class="btn small ghost" type="button" data-act="courtLog">Full record</button></div><div class="courtlog">${record}</div>`;
+  }
+  function courtLogModal() {
+    const dp = G.dip();
+    showModal({ wide: true, html: `<h2>${icon('scroll', 3)} The Court Record</h2><div class="courtlog">${dp.court.map(c => `<div class="cl" style="--c:${EL[c.f].color}"><b>${c.name}</b> <small>${c.role} · ${fmtTime(c.t)}</small><br>${c.text}</div>`).join('') || '<div class="empty">The court has not spoken yet.</div>'}</div>` }, true);
+  }
   function factionCard(f) {
     const F = S.factions[f]; const N = G.adultsOf(f).length; const risk = G.warRisk(f);
     const wv = C.factions.worldviews[EL[f].id] || C.factions.worldviewPlaceholder;
@@ -784,6 +908,8 @@
     const lossRows = Object.keys(w.losses || {}).map(f => { const l = w.losses[f]; return `<tr><td>${elTag(+f)}</td><td>${l.fallen}</td><td>${l.defect}</td><td>${l.fled}</td></tr>`; }).join('');
     showModal({
       html: `<h2>The war is over</h2><div class="reveal">
+        ${w.ca && w.cd ? `<p>Champions: <b>${w.ca.name}</b> of ${elName(w.attacker)}${w.ca.fallen ? ' <b class="bad">(fallen)</b>' : ''} vs <b>${w.cd.name}</b> of ${elName(w.defender)}${w.cd.fallen ? ' <b class="bad">(fallen)</b>' : ''}</p>` : ''}
+        ${w.pledge ? `<p class="${w.pledge.won ? 'good' : 'bad'}"><b>${w.pledge.won ? 'Your pledge paid off: +' + w.pledge.spoils + ' G and the winners\' gratitude.' : 'Your pledged side lost. The winners will remember.'}</b></p>` : ''}
         <p>${sideTags(sa)} <b>${w.pa.toFixed(1)}</b> power<br>vs<br>${sideTags(sd)} <b>${w.pd.toFixed(1)}</b> power<br><small>Alliances fight side by side at full strength.</small></p>
         <p>Attackers' chance: <b>${pct(w.chance)}</b> · roll: <b>${w.roll.toFixed(3)}</b> ${w.attackerWins ? '&lt;' : '≥'} ${w.chance.toFixed(3)}</p>
         ${burstBox(sideTxt(w.wside || [w.winner]).toUpperCase() + ' WIN!')}${w.newRuler ? `<p class="big">${elName(w.winner)} now rules the sky.</p>` : ''}
@@ -806,12 +932,18 @@
           if (e.up) { Snd.fanfare(); const unl = C.rep.unlocks[G.REPL[e.to].id]; showModal({ html: `<div class="reveal">${burstBox(G.REPL[e.to].name.toUpperCase() + '!', ['#FFF6B0', '#FFD23F', '#F08A2A'])}<p>${elTag(e.f)} now regards you as <b>${G.REPL[e.to].name}</b>.</p>${unl ? '<p class="good"><b>Unlocked: ' + unl + '</b></p>' : ''}<button class="btn" type="button" data-act="closeModal">Continue</button></div>` }); }
           else toast(elTag(e.f) + ': reputation drops to ' + G.REPL[e.to].name, 'bad');
           break;
-        case 'warAnnounce': toast(sideTxt(e.sa || [e.attacker]) + ' challenge ' + sideTxt(e.sd || [e.defender]) + '! The sky darkens.', 'war'); Snd.drum(); break;
-        case 'factionFallen': toast(`${elTag(e.f)} <b>has fallen</b> (${e.why}). Its survivors scatter.`, 'war'); break;
+        case 'royalSpeech': sayCourt(Court.kingSpeech(e)); if (e.decree) { const d = C.decrees.find(x => x.id === e.decree); toast(`📜 Royal decree: <b>${d.name}</b> – ${d.text}`, 'epic'); } break;
+        case 'ministerSpeech': sayCourt(Court.ministerSpeech(e)); break;
+        case 'peace': sayCourt(Court.peace(e)); Snd.fanfare(); toast(`${icon('peace')} Peace! ${elName(e.a)} and ${elName(e.b)} lower their claws.`, 'epic'); break;
+        case 'warAnnounce': sayCourt(Court.declaration(e)); toast(sideTxt(e.sa || [e.attacker]) + ' challenge ' + sideTxt(e.sd || [e.defender]) + '! The sky darkens.', 'war'); Snd.drum(); break;
+        case 'factionFallen': sayCourt(Court.lament(e)); toast(`${elTag(e.f)} <b>has fallen</b> (${e.why}). Its survivors scatter.`, 'war'); break;
         case 'factionReformed': Snd.fanfare(); toast(`${elTag(e.f)} <b>reforms</b> – ${e.how}.`, 'epic'); break;
         case 'warFight': toast('The war begins! ' + sideTxt(e.sa || []) + ' vs ' + sideTxt(e.sd || []), 'war'); break;
-        case 'warResult': warResultModal(e); break;
-        case 'coronation': { const k = S.dragons[e.king]; const l = G.lawOf(e.f) || C.lawPlaceholder; toast(`♛ Coronation: ${k ? k.name : '?'} (${elName(e.f)}) – ${l.name}: ${l.text}`, 'epic'); Snd.epic(); break; }
+        case 'warResult':
+          if (window.Cinema && S.settings.cinema !== false) Cinema.war(e, { mode: S.settings.anim === 'short' ? 'short' : 'full', flash: S.settings.flash, snd: Snd, done: () => warResultModal(e) });
+          else warResultModal(e);
+          break;
+        case 'coronation': { sayCourt(Court.coronation(e)); const k = S.dragons[e.king]; const l = G.lawOf(e.f) || C.lawPlaceholder; toast(`♛ Coronation: ${k ? k.name : '?'} (${elName(e.f)}) – ${l.name}: ${l.text}`, 'epic'); Snd.epic(); break; }
         case 'portal': { const z = S.zones[e.zone]; Snd.epic(); flash(); showModal({ html: `<div class="reveal">${hero(im(SP.portal(z.els.map(x => EL[x].color), 0, false, 4), ''))}<div class="fanfare">A PORTAL OPENS!</div><p>The <b>${zoneTitle(z)}</b> can now be reached (${e.how}).</p><button class="btn" type="button" data-act="zone" data-id="${z.id}">Step through</button></div>` }); break; }
         case 'speech': toast(e.text, 'war'); break;
         case 'toast': toast(e.text); break;
@@ -858,6 +990,31 @@
     activity: d => { const r = G.doActivity(+d.f, +d.i); if (r.ok) { Snd.coin(); toast(C.speech.thanks.replace('{f}', elName(+d.f)) + ' ' + r.msg, 'good'); } result(r); },
     help: () => { closeModal(); helpModal(0); },
     book: d => { ui.bookPage = +d.id; refreshModal(); const mb = document.querySelector('.modal-box'); if (mb) mb.scrollTop = 0; },
+    audience: () => {
+      const r = G.audience(); if (!r.ok) return result(r);
+      sayCourt(Court.audienceReply(r));
+      if (r.pleased) { Snd.epic(); toast(`The King is pleased (roll ${r.roll.toFixed(3)} &lt; ${r.chance.toFixed(2)}). Royal favour: scales +${Math.round(C.diplomacy.favourScaleBonus * 100)} %!`, 'epic'); }
+      else { Snd.bad(); toast(`The King is unimpressed (roll ${r.roll.toFixed(3)} ≥ ${r.chance.toFixed(2)}).`, 'bad'); }
+      render(true);
+    },
+    envoy: () => {
+      const ev = ui.envoy; const r = G.envoy(ev.type, +ev.a, +ev.b); if (!r.ok) return result(r);
+      const rolled = ev.type === 'alliance' || ev.type === 'pact' ? ` (roll ${r.roll.toFixed(3)} ${r.success ? '&lt;' : '≥'} ${r.chance.toFixed(2)})` : '';
+      const txt = { alliance: r.success ? `The envoy returns triumphant: ${elName(r.a)} and ${elName(r.b)} draw closer${r.forged ? ' – the alliance <b>' + G.allianceName(r.a, r.b) + '</b> is forged!' : '.'}` : `The envoy is turned away by ${elName(r.a)} and ${elName(r.b)}.`,
+        pact: r.success ? `${elName(r.a)} and ${elName(r.b)} swear a pact of peace.` : `${elName(r.a)} and ${elName(r.b)} refuse to sign.`,
+        wedding: `Bells ring across the sky! ${r.bride} of ${elName(r.a)} weds ${r.groom} of ${elName(r.b)}.${r.forged ? ' A new alliance is born!' : ''}`,
+        tribute: `${elName(r.a)} accepts your tribute.` }[ev.type];
+      if (r.success) { Snd.fanfare(); if (ev.type === 'wedding') flash(); } else Snd.bad();
+      toast(txt + rolled, r.success ? 'epic' : 'bad');
+      render(true);
+    },
+    pledge: d => { const r = G.pledge(d.side); if (r.ok) { Snd.drum(); toast('Your war chest rides with the ' + (d.side === 'a' ? 'attackers' : 'defenders') + '!', 'war'); } result(r); },
+    peace: () => {
+      const r = G.envoy('peace'); if (!r.ok) return result(r);
+      if (!r.success) { Snd.bad(); toast(`Peace talks fail (roll ${r.roll.toFixed(3)} ≥ ${r.chance.toFixed(2)}). ${elName(r.a)} is insulted.`, 'bad'); }
+      render(true);
+    },
+    courtLog: () => courtLogModal(),
     reset: () => { if (confirm('Really delete your save and start over?')) { localStorage.removeItem(C.saveKey); location.reload(); } },
   };
   function closeAllModals() { ui.queue = ui.queue.filter(m => m.keep); if (ui.modal && !ui.modal.busy) nextModal(); }
@@ -892,6 +1049,8 @@
     ui.last = ''; // next render rebuilds the ground
   });
   document.addEventListener('change', e => {
+    const es = e.target.closest('select[data-envoy]');
+    if (es) { ui.envoy[es.dataset.envoy] = es.value; es.blur(); render(true); return; }
     const fs = e.target.closest('select[data-dfilter]');
     if (fs) { ui.dfilter[fs.dataset.dfilter] = fs.value; ui.dfilter.limit = 120; fs.blur(); render(true); return; }
     const s = e.target.closest('select[data-nest]'); if (!s) return;
@@ -901,6 +1060,7 @@
   $('#btn-sound').addEventListener('click', () => { S.settings.sound = !S.settings.sound; Snd.init(); updateTop(); });
   $('#btn-anim').addEventListener('click', () => { const o = ['auto', 'full', 'short']; S.settings.anim = o[(o.indexOf(S.settings.anim) + 1) % 3]; toast('Animations: ' + ({ auto: 'automatic', full: 'full', short: 'short' })[S.settings.anim]); updateTop(); });
   $('#btn-help').addEventListener('click', () => helpModal());
+  $('#herald').addEventListener('click', e => { if (e.target.closest('#herald-log')) { courtLogModal(); return; } if (e.target.closest('#herald-min')) { S.settings.heraldMin = !S.settings.heraldMin; heraldLayout(); return; } herald.hurry = true; });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && ui.modal) closeModal(); });
 
   // ------------------------------------------------------------ the Keeper's Handbook
@@ -1003,6 +1163,19 @@
       <p>Each faction has four needs: <b>space, brood, honour and tribute</b>. Crowded, unhappy, uncompromising factions risk war. You will see it coming: the needs flash, the faction warns you, and the sky turns red.</p>
       <p>The battle is one open roll: the attacker wins with chance <b>power ÷ (power + defender's power)</b>, allies counting half. The loser's king always falls. About 30 % of the losers fall, 30 % defect or flee, the rest stay as subjects. Everyone who fought is war-marked – and the fate of every dragon you raised is told one by one.</p>
       ${tip('War is the sky\'s brake on overpopulation. A faction bursting at the seams is a faction about to fight.')}` },
+    { t: 'The Court & Diplomacy', i: 'crown', body: () => `
+      <p>The sky is not ruled by claws alone. Every <b>${C.diplomacy.speechEvery} years</b> the Dragon King addresses the realm – listen at the bottom of the screen. Between speeches the ministers of the government brief you: the Minister of War warns of restless factions, the Spymaster whispers which houses are close to an alliance, the Master of Coin talks prices.</p>
+      <h3>Royal decrees</h3>
+      <p>Every ${C.diplomacy.decreeEvery}rd speech carries a decree that really changes the world for ${Math.round(C.diplomacy.decreeSeconds / 60 * 10) / 10} minutes:</p>
+      <table>${C.decrees.map(d => `<tr><td><b>${d.name}</b></td><td>${d.text}</td></tr>`).join('')}</table>
+      <h3>Audience with the King</h3>
+      <p>Bring a gift of ${C.diplomacy.audienceCost} G. If the King is pleased (better odds the more he likes you) you gain reputation and the <b>royal favour</b>: your scales sell for +${Math.round(C.diplomacy.favourScaleBonus * 100)} % for ${C.diplomacy.favourSeconds / 60} minutes. Displease him and he remembers.</p>
+      <h3>The envoy desk</h3>
+      <table><tr><td><b>Forge an alliance</b></td><td>a rolled chance to bring two factions much closer – maybe into a named alliance</td></tr><tr><td><b>Pact of peace</b></td><td>a rolled chance; the two may not declare war on each other for ${C.diplomacy.envoy.pact.seconds / 60} minutes</td></tr><tr><td><b>Royal wedding</b></td><td>expensive but certain: the eldest of two houses wed</td></tr><tr><td><b>Send tribute</b></td><td>gold for goodwill</td></tr></table>
+      <h3>When war is declared</h3>
+      <p>Open the <b>war room</b>. While the war is only threatened you may try to <b>broker peace</b> – stubborn attackers are hard to talk down. Or pledge your war chest to one side: it fights ${Math.round(C.diplomacy.pledgePower * 100)} % harder, and if it wins you earn the gratitude of every victor and ${C.diplomacy.pledgeSpoils}× your gold back.</p>
+      <p>And when the battle is decided, the sky holds its breath: the champions of both sides – the youngest, strongest dragons – meet in a duel of beams. The duel sways with the real power of both sides, and the decisive roll is shown to you, digit by digit.</p>
+      ${tip('A pact between the two biggest rivals is the cheapest way to keep your favourite faction alive.')}` },
     { t: 'Portals', i: 'lock', body: () => `
       <p>Three portals stand open at the start. The others show only a locked arch.</p>
       ${fig(im(SP.portal([EL[8].color], 0, false, 3), '') + im(SP.portal([EL[8].color], 0, true, 3), ''), 'open · locked')}
@@ -1219,6 +1392,8 @@
   $('#btn-help').innerHTML = icon('help', 2);
   boot();
   render(true); updateTop();
+  $('#herald-log').innerHTML = icon('scroll', 2);
+  setTimeout(() => { if (S.king) sayCourt(Court.kingSpeech({ king: S.king, f: S.ruler })); }, 2500);
   if (ui.first) showModal({ html: `<h2>Welcome to Dragonle!</h2><div class="reveal">${hero(im(SP.egg({ shell: '#F2CF5B', spots: '#B8902A', seed: 5, crack: 1 }, 7), ''))}</div><p>A dragon world of twelve elements. It's all about <b>eggs and young dragons</b> – the grown-ups only show up as shapes in the sky, wearing their faction's colours.</p><p>Buy an egg at the <b>Market</b>, hatch it in a <b>zone</b> and raise the dragon at the <b>School</b>.</p><div class="row" style="justify-content:center"><button class="btn" type="button" data-act="nav" data-id="market">${icon('market')} To the Market</button><button class="btn ghost" type="button" data-act="help">How to play</button></div>` });
   requestAnimationFrame(frame);
   window.DragonleUI = { ui, render };
