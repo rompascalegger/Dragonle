@@ -17,6 +17,7 @@
     // ---------------------------------------------------------------- Time
     time: {
       yearsPerSecond: 1,        // [FIXED] 1 game year = 1 second
+      startYear: 50000,         // the calendar of the dragon world starts here
       maxTickSeconds: 0.25,     // longest single simulation step
       matureAge: 300,           // [FIXED] sexual maturity
       adultAge: 1000,           // [FIXED] adult, leaves school

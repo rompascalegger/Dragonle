@@ -262,7 +262,7 @@ table.list td { padding: 5px 6px; border-bottom: 2px dashed rgba(27,16,36,.2); v
 
 /* ---------------------------------------------------------------- log */
 .log { display: grid; gap: 8px; font-size: 15px; }
-.log .li { display: grid; grid-template-columns: 74px 1fr; gap: 8px; padding: 6px 8px; margin: 2px; background: var(--paper); box-shadow: var(--pb2); }
+.log .li { display: grid; grid-template-columns: 86px 1fr; gap: 8px; padding: 6px 8px; margin: 2px; background: var(--paper); box-shadow: var(--pb2); }
 .log .li .t { color: var(--mute); font-weight: 700; }
 .log .li.good { border-left: 6px solid var(--green); } .log .li.bad { border-left: 6px solid var(--red); } .log .li.epic { border-left: 6px solid var(--purple); } .log .li.war { border-left: 6px solid var(--orange); }
 .hist { display: grid; grid-template-columns: repeat(13, 1fr); gap: 4px; align-items: end; height: 130px; }
@@ -366,7 +366,6 @@ table.list td { padding: 5px 6px; border-bottom: 2px dashed rgba(27,16,36,.2); v
   .brand-name { font-size: 18px; }
   .sky-wrap { height: 132px; }
   .nav button { font-size: 8px; }
-  .chip.time { display: none; }
   .cols-2 { grid-template-columns: 1fr; }
   .vecrow { grid-template-columns: 92px 1fr 42px; }
   .coll { grid-template-columns: 74px repeat(20, 14px); }

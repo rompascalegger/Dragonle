@@ -25,7 +25,7 @@
   const fmt = n => Math.floor(n).toLocaleString('en-US');
   const pct = x => Math.round(x * 100) + ' %';
   function fmtYears(a) { a = Math.floor(a); return a < 100000 ? fmt(a) + ' yrs' : (a / 1000).toFixed(0) + 'k yrs'; }
-  function fmtTime(s) { s = Math.floor(s); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60; return h ? h + ' h ' + String(m).padStart(2, '0') + ' min' : m + ':' + String(x).padStart(2, '0'); }
+  function fmtTime(s) { return 'Y ' + fmt(C.time.startYear + Math.floor(s)); } // the dragon calendar: 1 second = 1 year
   const elName = e => EL[e].name;
   const sw = (e, title) => `<span class="sw" style="background:${EL[e].color}" title="${title || EL[e].name}"></span>`;
   const swc = (c, title) => `<span class="sw" style="background:${c}" title="${title || ''}"></span>`;
@@ -733,7 +733,7 @@
   function updateTop() {
     $('#gold').textContent = fmt(S.gold);
     $('#schoolrep').textContent = fmt(S.schoolRep);
-    $('#played').textContent = fmtTime(S.played);
+    $('#played').textContent = 'Year ' + fmt(C.time.startYear + Math.floor(S.played));
     const k = S.king && S.dragons[S.king];
     const rc = `${icon('crown')} ${sw(S.ruler)} <b>${elName(S.ruler)}</b>${k ? ' <small>' + k.name + '</small>' : ''}`;
     if (ui.rulerHtml !== rc) { $('#ruler-chip').innerHTML = rc; ui.rulerHtml = rc; }
