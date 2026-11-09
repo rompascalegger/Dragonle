@@ -109,14 +109,14 @@
 
   // ------------------------------------------------------------ the royal herald (speeches at the bottom)
   const herald = { q: [], busy: false, hurry: false };
-  function sayCourt(sp) {
+  function sayCourt(sp, inOrder) {
     if (!sp || !sp.lines || !sp.lines.length) return;
     const dp = G.dip();
     dp.court.unshift({ t: Math.round(S.played), f: sp.f, kind: sp.kind, name: sp.name, role: sp.role, text: sp.lines.join(' ') });
     if (dp.court.length > 80) dp.court.length = 80;
     // royal words jump the queue, chatter waits
-    if (sp.kind === 'minister') herald.q.push(sp); else herald.q.unshift(sp);
-    if (herald.q.length > 3) herald.q.length = 3;
+    if (sp.kind === 'minister' || inOrder) herald.q.push(sp); else herald.q.unshift(sp);
+    if (herald.q.length > (inOrder ? 6 : 3)) herald.q.length = inOrder ? 6 : 3;
     if (!herald.busy) heraldNext();
   }
   const hwait = ms => new Promise(res => { const t0 = performance.now(); const id = setInterval(() => { if (herald.hurry || performance.now() - t0 >= ms) { clearInterval(id); res(); } }, 30); });
@@ -466,7 +466,7 @@
       <div><div class="epithet">${v.title.toUpperCase()}</div><h3>${k ? '♛ ' + k.name + ' ' + v.epithet : 'The throne stands empty'}</h3>
         <p>Dragon King of ${elTag(S.ruler)}${k ? ' · <span data-live="age:' + k.id + '"></span>' : ''} · next speech in <b data-live="nextspeech"></b></p>
         <p>${icon('scroll')} <b>${l.name}</b> – ${l.text}</p>
-        ${dc ? `<div class="decree">📜 <b>Royal decree: ${dc.name}</b> – ${dc.text} <small>(<span data-live="decree"></span>)</small></div>` : '<p><small>No decree is in force. Every ' + DC.decreeEvery + 'rd speech brings one.</small></p>'}
+        ${dc ? `<div class="decree">📜 <b>Royal decree: ${dc.name}</b> – ${dc.text} <small>(<span data-live="decree"></span>)</small></div>` : '<p><small>No decree is in force. Every ' + (DC.decreeEvery === 2 ? 'second' : DC.decreeEvery + 'th') + ' royal speech brings one.</small></p>'}
         <p><small data-live="favour"></small></p>
         <div class="row"><button class="btn" type="button" data-act="audience" ${k ? '' : 'disabled'}>${icon('crown')} Request an audience · ${DC.audienceCost} G</button><small>chance the king is pleased: <b>${pct(aChance)}</b> → +${DC.audienceRep} reputation and royal favour</small></div>
       </div></div>`;
@@ -896,9 +896,28 @@
     return special ? 'full' : 'short';
   }
   // clutch: a small, quiet info box at the side – the four rolls are still shown openly
-  function clutchBox(ev) {
+  // the corner: every notice lands here as a small card – nothing blocks the screen, nothing needs a skip
+  function cornerWrap() {
     let wrap = $('#clutches');
     if (!wrap) { wrap = document.createElement('div'); wrap.id = 'clutches'; wrap.className = 'clutches'; document.body.appendChild(wrap); }
+    const tb = document.querySelector('.topbar'); wrap.style.top = ((tb ? tb.getBoundingClientRect().bottom : 60) + 10) + 'px'; // top-right corner, clear of the herald
+    return wrap;
+  }
+  function corner(html, o) {
+    o = o || {};
+    const wrap = cornerWrap();
+    const el = document.createElement('div');
+    el.className = 'cbox ' + (o.cls || '');
+    if (o.act) { el.dataset.act = o.act; if (o.id != null) el.dataset.id = o.id; }
+    el.title = o.title || 'Click for details';
+    el.innerHTML = html;
+    wrap.prepend(el);
+    while (wrap.children.length > 4) wrap.lastChild.remove();
+    setTimeout(() => { el.classList.add('gone'); setTimeout(() => el.remove(), 400); }, o.life || 9000);
+    return el;
+  }
+  function clutchBox(ev) {
+    const wrap = cornerWrap();
     const a = S.dragons[ev.a], b = S.dragons[ev.b];
     const r = ev.roll;
     const mix = a && b ? G.mixColor(a.v.map((x, i) => (x + b.v[i]) / 2)) : '#ffd23f';
@@ -910,7 +929,7 @@
       <div class="crolls"><span data-k="a">gate <b>·</b></span><span data-k="x">x <b>·</b></span><span data-k="y">y <b>·</b></span><span data-k="z">z <b>·</b></span></div>
       <div class="ceggs"></div><div class="cres">…</div>`;
     wrap.prepend(el);
-    while (wrap.children.length > 3) wrap.lastChild.remove();
+    while (wrap.children.length > 4) wrap.lastChild.remove();
     const quick = S.settings.anim === 'short';
     const set = (k, v, lo, hi) => new Promise(res => {
       const span = el.querySelector(`[data-k="${k}"] b`); if (!span) return res();
@@ -940,18 +959,23 @@
   function graduateModal(ev) {
     const d = S.dragons[ev.id]; if (!d) return;
     const fac = ev.faction;
-    showModal({
-      html: `<h2>Grown up: ${d.name}</h2><div class="reveal">${hero(imgDragon(d, 5), d.mat)}
-        <h3>Imprinting – ${zoneTitle(S.zones[ev.zone])}</h3>
-        <div style="width:100%;display:grid;gap:4px"><small>before</small>${vecBar(ev.before)}<small>after</small>${vecBar(ev.after)}</div>
-        ${ev.deep ? '<p class="epic"><b>It carries the zone\'s arch-enemy and turns deep: darker tint, no imprint, no zone bonus.</b></p>' : ev.shifted ? '<p>The zone shifts it one step towards its element.</p>' : '<p><small>No shift possible.</small></p>'}
-        ${ev.becamePure ? '<p class="fanfare">20/20 – imprinted purebred!</p>' : ''}
-        <h3>It chooses its faction</h3><p>${ev.probs.map(p => `${elTag(p.el)} ${pct(p.p)}`).join(' · ')}</p>
-        <p class="big">→ ${elTag(fac)}</p>
-        ${ev.firstAccess ? `<p class="fanfare">Access to ${elName(fac)}!</p><p><b>Reputation: Friendly</b> · ${C.rep.unlocks.friendly}</p>` : ''}
-        <p><small>It leaves school, now flies in the sky and belongs to its faction. Its scales fall in the ${zoneTitle(S.zones[ev.zone])}.</small></p></div>`,
-    });
-    if (ev.becamePure || ev.firstAccess) Snd.fanfare(); else Snd.hatch();
+    const notes = [];
+    if (ev.firstAccess) notes.push('<b class="goldt">Access to ' + elName(fac) + ' – reputation Friendly!</b>');
+    if (ev.becamePure) notes.push('<b class="goldt">Imprinted purebred (20/20)!</b>');
+    else if (ev.deep) notes.push('<span class="epic">Turned deep (carries the zone\'s arch-enemy)</span>');
+    else if (ev.shifted) notes.push('<small>Imprinted one step toward the zone</small>');
+    corner(`<div class="chead"><span>${icon('star')} Grown up</span><small>${zoneTitle(S.zones[ev.zone])}</small></div>
+      <div class="crow"><span class="cpic">${imgDragon(d, 2)}</span><div><b>${d.name}</b> joins ${elTag(fac)}<br><small>${ev.probs.map(p => elName(p.el) + ' ' + pct(p.p)).join(' · ')}</small></div></div>
+      ${notes.length ? `<div>${notes.join('<br>')}</div>` : ''}`, { cls: ev.firstAccess || ev.becamePure ? 'big' : '', act: 'dragon', id: d.id, life: 10000, title: 'Open the dragon card' });
+    if (ev.becamePure || ev.firstAccess) Snd.fanfare(); else Snd.tone(784, 0.1, 'triangle', 0.03);
+  }
+  function warCard(w) {
+    const lost = Object.values(w.losses || {}).reduce((n, l) => n + l.fallen, 0);
+    corner(`<div class="chead"><span>${icon('sword')} The war is over</span></div>
+      <div><b>${sideTxt(w.wside || [w.winner])} win</b> against ${sideTxt(w.lside || [w.loser])}<br><small>roll ${w.roll.toFixed(3)} ${w.attackerWins ? '&lt;' : '≥'} ${w.chance.toFixed(3)} · ${lost} fallen${w.newRuler ? ' · new ruler: ' + elName(w.winner) : ''}</small></div>
+      ${(w.collapsed || []).length ? `<small class="bad"><b>${sideTxt(w.collapsed)} fell from the sky</b></small>` : ''}
+      ${w.pledge ? `<small class="${w.pledge.won ? 'good' : 'bad'}"><b>${w.pledge.won ? 'Your pledge paid +' + w.pledge.spoils + ' G' : 'Your pledged side lost'}</b></small>` : ''}
+      ${w.fates.length ? `<small>${w.fates.length} of your dragons fought – click for their fates</small>` : '<small>Click for the full report</small>'}`, { cls: 'big', act: 'warDetails', life: 14000, title: 'Full war report' });
   }
   function warResultModal(w) {
     Snd.drum();
@@ -980,7 +1004,7 @@
         case 'eggReady': toast('An egg in the ' + zoneTitle(S.zones[e.zone]) + ' is ready to hatch!', 'good'); Snd.tone(880, 0.1, 'triangle', 0.06); break;
         case 'mature': { const d = S.dragons[e.id]; if (d) toast(d.name + ' is now mature (300 yrs).'); break; }
         case 'repLevel':
-          if (e.up) { Snd.fanfare(); const unl = C.rep.unlocks[G.REPL[e.to].id]; showModal({ html: `<div class="reveal">${burstBox(G.REPL[e.to].name.toUpperCase() + '!', ['#FFF6B0', '#FFD23F', '#F08A2A'])}<p>${elTag(e.f)} now regards you as <b>${G.REPL[e.to].name}</b>.</p>${unl ? '<p class="good"><b>Unlocked: ' + unl + '</b></p>' : ''}<button class="btn" type="button" data-act="closeModal">Continue</button></div>` }); }
+          if (e.up) { Snd.fanfare(); const unl = C.rep.unlocks[G.REPL[e.to].id]; corner(`<div class="chead"><span>${icon('star')} Reputation</span><small>${elName(e.f)}</small></div><div><b class="goldt">${G.REPL[e.to].name}!</b> ${elTag(e.f)} now regards you as ${G.REPL[e.to].name}.</div>${unl ? '<small class="good"><b>Unlocked: ' + unl + '</b></small>' : ''}`, { cls: 'big', act: 'nav', id: 'factions', life: 10000 }); }
           else toast(elTag(e.f) + ': reputation drops to ' + G.REPL[e.to].name, 'bad');
           break;
         case 'royalSpeech': sayCourt(Court.kingSpeech(e)); if (e.decree) { const d = C.decrees.find(x => x.id === e.decree); toast(`📜 Royal decree: <b>${d.name}</b> – ${d.text}`, 'epic'); } break;
@@ -997,16 +1021,17 @@
           toast(e.kingWon ? `${icon('crown')} <b>The King's word holds.</b> ${elName(e.attacker)} backs down.` : `${icon('sword')} <b>The King is silenced. WAR!</b>`, e.kingWon ? 'epic' : 'war');
           break;
         case 'peace': sayCourt(Court.peace(e)); Snd.fanfare(); toast(`${icon('peace')} Peace! ${elName(e.a)} and ${elName(e.b)} lower their claws.`, 'epic'); break;
-        case 'warAnnounce': sayCourt(Court.declaration(e)); toast(sideTxt(e.sa || [e.attacker]) + ' challenge ' + sideTxt(e.sd || [e.defender]) + '! The sky darkens.', 'war'); Snd.drum(); break;
+        case 'warAnnounce': sayCourt(Court.declaration(e), true); toast(sideTxt(e.sa || [e.attacker]) + ' challenge ' + sideTxt(e.sd || [e.defender]) + '! The sky darkens.', 'war'); Snd.drum(); break;
         case 'factionFallen': sayCourt(Court.lament(e)); toast(`${elTag(e.f)} <b>has fallen</b> (${e.why}). Its survivors scatter.`, 'war'); break;
         case 'factionReformed': Snd.fanfare(); toast(`${elTag(e.f)} <b>reforms</b> – ${e.how}.`, 'epic'); break;
         case 'warFight': toast('The war begins! ' + sideTxt(e.sa || []) + ' vs ' + sideTxt(e.sd || []), 'war'); break;
         case 'warResult':
-          if (window.Cinema && S.settings.cinema !== false) Cinema.war(e, { mode: S.settings.anim === 'short' ? 'short' : 'full', flash: S.settings.flash, snd: Snd, done: () => warResultModal(e) });
-          else warResultModal(e);
+          ui.lastWar = e;
+          if (window.Cinema && S.settings.cinema !== false) Cinema.war(e, { mode: S.settings.anim === 'short' ? 'short' : 'full', flash: S.settings.flash, snd: Snd, done: () => warCard(e) });
+          else warCard(e);
           break;
         case 'coronation': { sayCourt(Court.coronation(e)); const k = S.dragons[e.king]; const l = G.lawOf(e.f) || C.lawPlaceholder; toast(`♛ Coronation: ${k ? k.name : '?'} (${elName(e.f)}) – ${l.name}: ${l.text}`, 'epic'); Snd.epic(); break; }
-        case 'portal': { const z = S.zones[e.zone]; Snd.epic(); flash(); showModal({ html: `<div class="reveal">${hero(im(SP.portal(z.els.map(x => EL[x].color), 0, false, 4), ''))}<div class="fanfare">A PORTAL OPENS!</div><p>The <b>${zoneTitle(z)}</b> can now be reached (${e.how}).</p><button class="btn" type="button" data-act="zone" data-id="${z.id}">Step through</button></div>` }); break; }
+        case 'portal': { const z = S.zones[e.zone]; Snd.epic(); corner(`<div class="chead"><span>${icon('world')} A portal opens!</span></div><div class="crow"><span class="cpic">${im(SP.portal(z.els.map(x => EL[x].color), 0, false, 1), '')}</span><div>The <b>${zoneTitle(z)}</b> can now be reached (${e.how}).</div></div>`, { cls: 'big', act: 'zone', id: z.id, life: 12000, title: 'Step through' }); break; }
         case 'speech': toast(e.text, 'war'); break;
         case 'toast': toast(e.text); break;
         default: break;
@@ -1077,6 +1102,7 @@
       render(true);
     },
     courtLog: () => courtLogModal(),
+    warDetails: () => { if (ui.lastWar) warResultModal(ui.lastWar); },
     watchArgument: () => { if (window.Cinema && Cinema.arenaOpenNow()) Cinema.arenaShow(); else toast('The argument is over.', 'bad'); },
     whisper: d => { const r = G.whisper(d.side); if (r.ok) { Snd.coin(); toast('Your whisper reaches ' + (d.side === 'king' ? 'the King' : elName(S.war.attacker)) + '.', 'good'); } result(r); },
     story: () => storyModal(),
@@ -1233,7 +1259,7 @@
     { t: 'The Court & Diplomacy', i: 'crown', body: () => `
       <p>The sky is not ruled by claws alone. Every <b>${C.diplomacy.speechEvery} years</b> the Dragon King addresses the realm – listen at the bottom of the screen. Between speeches the ministers of the government brief you: the Minister of War warns of restless factions, the Spymaster whispers which houses are close to an alliance, the Master of Coin talks prices.</p>
       <h3>Royal decrees</h3>
-      <p>Every ${C.diplomacy.decreeEvery}rd speech carries a decree that really changes the world for ${Math.round(C.diplomacy.decreeSeconds / 60 * 10) / 10} minutes:</p>
+      <p>Every ${C.diplomacy.decreeEvery === 2 ? 'second' : C.diplomacy.decreeEvery + 'th'} speech carries a decree that really changes the world for ${Math.round(C.diplomacy.decreeSeconds / 60 * 10) / 10} minutes:</p>
       <table>${C.decrees.map(d => `<tr><td><b>${d.name}</b></td><td>${d.text}</td></tr>`).join('')}</table>
       <h3>Audience with the King</h3>
       <p>Bring a gift of ${C.diplomacy.audienceCost} G. If the King is pleased (better odds the more he likes you) you gain reputation and the <b>royal favour</b>: your scales sell for +${Math.round(C.diplomacy.favourScaleBonus * 100)} % for ${C.diplomacy.favourSeconds / 60} minutes. Displease him and he remembers.</p>
@@ -1368,7 +1394,7 @@
     if (info.textContent !== txt) info.textContent = txt;
     const tn = $('#tension');
     if (war && war.phase === 'argument') { tn.hidden = false; tn.querySelector('.tension-label').textContent = 'CHALLENGE TO THE THRONE: ' + elName(war.attacker).toUpperCase() + ' ' + war.arg.score[1] + ' – ' + war.arg.score[0] + ' KING'; tn.querySelector('i').style.width = (war.t / (C.war.argument.rounds * C.war.argument.roundSeconds) * 100) + '%'; }
-    else if (war) { tn.hidden = false; tn.querySelector('.tension-label').textContent = (war.phase === 'announce' ? 'WAR THREAT: ' : 'WAR: ') + sideTxt(wa).toUpperCase() + ' vs ' + sideTxt(wd).toUpperCase(); tn.querySelector('i').style.width = (war.phase === 'announce' ? tension * 100 : 100 - war.t / (war.fight || C.war.fightSeconds) * 100) + '%'; }
+    else if (war) { tn.hidden = false; tn.querySelector('.tension-label').textContent = war.phase === 'argument' ? 'CHALLENGE TO THE THRONE: ' + elName(war.attacker).toUpperCase() + ' vs THE KING' : (war.phase === 'announce' ? 'WAR THREAT: ' : 'WAR: ') + sideTxt(wa).toUpperCase() + ' vs ' + sideTxt(wd).toUpperCase(); tn.querySelector('i').style.width = (war.phase === 'argument' ? war.t / (C.war.argument.rounds * C.war.argument.roundSeconds) * 100 : war.phase === 'announce' ? tension * 100 : 100 - war.t / (war.fight || C.war.fightSeconds) * 100) + '%'; }
     else tn.hidden = true;
   }
   const smooth = x => x * x * (3 - 2 * x);
@@ -1462,7 +1488,6 @@
   boot();
   render(true); updateTop();
   $('#herald-log').innerHTML = icon('scroll', 2);
-  setTimeout(() => { if (S.king) sayCourt(Court.kingSpeech({ king: S.king, f: S.ruler })); }, 2500);
   if (ui.first) showModal({ html: `<h2>Welcome to Dragonle!</h2><div class="reveal">${hero(im(SP.egg({ shell: '#F2CF5B', spots: '#B8902A', seed: 5, crack: 1 }, 7), ''))}</div><p>A dragon world of twelve elements. It's all about <b>eggs and young dragons</b> – the grown-ups only show up as shapes in the sky, wearing their faction's colours.</p><p>Buy an egg at the <b>Market</b>, hatch it in a <b>zone</b> and raise the dragon at the <b>School</b>.</p><div class="row" style="justify-content:center"><button class="btn" type="button" data-act="nav" data-id="market">${icon('market')} To the Market</button><button class="btn ghost" type="button" data-act="help">How to play</button></div>` });
   requestAnimationFrame(frame);
   window.DragonleUI = { ui, render };

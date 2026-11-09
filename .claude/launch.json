@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "8126"],
       "port": 8126
+    },
+    {
+      "name": "dragonle-alt",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8131"],
+      "port": 8131
     }
   ]
 }

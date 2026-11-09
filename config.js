@@ -348,9 +348,9 @@
 
     // ---------------------------------------------------------------- Court & diplomacy
     diplomacy: {
-      speechEvery: 20,          // the Dragon King speaks every 20 game years
-      ministerEvery: [7, 13],   // a minister speaks between royal speeches (random gap, seconds)
-      decreeEvery: 3,           // every 3rd speech carries a royal decree
+      speechEvery: 100,         // the Dragon King speaks every 100 game years
+      ministerEvery: [25, 45],   // a minister speaks between royal speeches (random gap, seconds)
+      decreeEvery: 2,           // every 3rd speech carries a royal decree
       decreeSeconds: 150,       // how long a decree lasts
       audienceCost: 150,        // gift for an audience with the king
       audienceBase: 0.45,       // base chance the king is pleased (+ per reputation level)

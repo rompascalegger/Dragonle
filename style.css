@@ -637,3 +637,9 @@ body.has-herald .toasts { bottom: calc(var(--navh) + 104px); }
   .reign { grid-template-columns: 1fr; }
   .chron-head { grid-template-columns: 1fr; }
 }
+
+/* corner notices: one stack above the herald, never over the game */
+.clutches { left: auto !important; right: 14px; bottom: auto !important; }
+.cbox .crow { display: flex; gap: 8px; align-items: center; }
+.cbox .cpic { flex: 0 0 auto; display: grid; place-items: center; background: var(--dither), #fbf4e0; box-shadow: var(--pb2); padding: 2px; margin: 2px; }
+.cbox .cpic img { display: block; }

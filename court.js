@@ -59,13 +59,22 @@
   }
 
   // ------------------------------------------------------------ the King
+  // each faction has 100 unique quotes; a shuffled bag means none repeats until all have been spoken
+  function quote(f) {
+    const dp = G.dip(); dp.qbag = dp.qbag || {};
+    const id = EL[f].id; const Q = (root.DRAGONLE_QUOTES || {})[id]; if (!Q || !Q.length) return pick(voice(f).close);
+    let bag = dp.qbag[id];
+    if (!bag || !bag.length) { bag = Q.map((_, i) => i); for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = bag[i]; bag[i] = bag[j]; bag[j] = t; } }
+    const q = Q[bag.pop()]; dp.qbag[id] = bag; return q;
+  }
   function kingSpeech(e) {
     const s = S(); const k = s.dragons[e.king]; if (!k) return null;
     const f = e.f; const v = voice(f);
     const m = { king: k.name, f: EL[f].name, keeper: 'of the Nests', enemy: worstOf(f) >= 0 ? EL[worstOf(f)].name : 'the sky', ally: bestOf(f) >= 0 ? EL[bestOf(f)].name : '' };
-    const lines = [pick(v.open)].concat(situation(f, m));
+    const lines = [pick(v.open), quote(f)].concat(situation(f, m).slice(0, 1), [quote(f)]);
     if (e.decree) { const d = G.C.decrees.find(x => x.id === e.decree); lines.push(`By royal decree: ${d.name}! ${d.text}`); }
-    lines.push(keeperLine(f, v, m), pick(v.close));
+    if (Math.random() < 0.5) lines.push(keeperLine(f, v, m));
+    lines.push(pick(v.close));
     return { kind: 'king', f, who: snap(k), name: `♛ ${k.name} ${v.epithet}`, role: `Dragon King of ${EL[f].name} · ${v.title}`, lines, decree: e.decree };
   }
   // ------------------------------------------------------------ the government
@@ -202,5 +211,5 @@
     if (e.to != null) parts.push(`Its reign ended when it ${e.end}.`);
     return parts.join(' ');
   }
-  root.Court = { kingSpeech, ministerSpeech, declaration, coronation, lament, peace, audienceReply, cry, victoryLine, defeatLine, voice, TOPIC, argueLine, challenge, verdict, bio };
+  root.Court = { quote, kingSpeech, ministerSpeech, declaration, coronation, lament, peace, audienceReply, cry, victoryLine, defeatLine, voice, TOPIC, argueLine, challenge, verdict, bio };
 })(typeof window !== 'undefined' ? window : globalThis);
