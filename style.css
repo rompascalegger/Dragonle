@@ -643,3 +643,16 @@ body.has-herald .toasts { bottom: calc(var(--navh) + 104px); }
 .cbox .crow { display: flex; gap: 8px; align-items: center; }
 .cbox .cpic { flex: 0 0 auto; display: grid; place-items: center; background: var(--dither), #fbf4e0; box-shadow: var(--pb2); padding: 2px; margin: 2px; }
 .cbox .cpic img { display: block; }
+
+/* herald as a flexible row: the talking face never covers the name or the text */
+.herald { display: flex !important; align-items: center; gap: 12px; }
+.herald > .hp { flex: 0 0 auto; width: auto !important; height: auto !important; min-width: 64px; min-height: 56px; padding: 4px; }
+.herald > .hp img { display: block; max-height: 72px; width: auto; height: auto; }
+.herald > div:nth-child(2) { flex: 1 1 auto; min-width: 0; }
+.herald > .hb { flex: 0 0 auto; align-self: center; }
+.herald .hn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.herald .ht { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .herald > .hp img { max-height: 48px; }
+  .herald .hn small { display: block; margin-left: 0; }
+}

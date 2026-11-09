@@ -74,6 +74,7 @@
   }
   // change reputation; spread = transfer through the relationship matrix
   function addRep(f, delta, spread) {
+    const lrep = S.ruler != null && C.laws[EL[S.ruler].id]; if (delta < 0 && lrep && lrep.repLossMult) delta *= lrep.repLossMult;
     setRepRaw(f, S.rep[f] + delta);
     if (spread !== false) {
       for (let b = 0; b < NE; b++) {
@@ -243,7 +244,7 @@
   function zoneName(z) { return z.els.length > 1 ? allianceName(z.els[0], z.els[1]) : EL[z.els[0]].name; }
   function zoneColor(z) { if (z.els.length === 1) return EL[z.els[0]].color; return allianceColor(z.els[0], z.els[1]); }
   function slotPrice(z) { return Math.round(C.zones.slotPriceBase * Math.pow(C.zones.slotPriceGrowth, z.slots - C.zones.startSlots)); }
-  function portalPrice() { const extra = Object.values(S.zones).filter(z => z.unlocked && z.els.length === 1).length - C.zones.start.length; return Math.round(C.portals.goldBase * Math.pow(C.portals.goldGrowth, Math.max(0, extra))); }
+  function portalPrice() { const extra = Object.values(S.zones).filter(z => z.unlocked && z.els.length === 1).length - C.zones.start.length; const l = law(); return Math.round(C.portals.goldBase * Math.pow(C.portals.goldGrowth, Math.max(0, extra)) * (1 - ((l && l.portalDiscount) || 0))); }
 
   // ------------------------------------------------------------ Initialisation
   function init(seed) {
@@ -403,7 +404,7 @@
     if (glitter) hints.push(C.riddle.glitter);
     return { cand, hints, label: null, clarity };
   }
-  function examineCost(d) { return C.market.examineCost[d.cls || classify(d.v)] || 10; }
+  function examineCost(d) { const l = law(); return Math.max(1, Math.round((C.market.examineCost[d.cls || classify(d.v)] || 10) * (1 - ((l && l.examineDiscount) || 0)))); }
   function examine(id) {
     const d = S.dragons[id];
     if (!d || (d.status !== 'egg' && d.status !== 'incubating')) return { ok: false };
@@ -452,7 +453,7 @@
     S.stats.hatched++;
     if (d.dud) {
       const cls = d.cls || 'cheap';
-      const refund = Math.round((d.paid != null ? d.paid : eggPrice(cls)) * CLS[cls].refund);
+      const ldud = law(); const refund = Math.round((d.paid != null ? d.paid : eggPrice(cls)) * Math.min(1, CLS[cls].refund + ((ldud && ldud.dudRefundBonus) || 0)));
       S.gold += refund; S.stats.duds++;
       S.market.shells++; if (CLS[cls].idx > CLS[S.market.shellCls].idx) S.market.shellCls = cls;
       let pity = null;
@@ -837,7 +838,7 @@
     if (S.warCooldown > 0) return;
     const dc = decree();
     if (dc && dc.truce) return;
-    const warMult = (dc && dc.warMult) || 1;
+    const lwar = law(); const warMult = ((dc && dc.warMult) || 1) * ((lwar && lwar.warMult) || 1);
     for (let f = 0; f < NE; f++) {
       const N = adultsOf(f).length; if (!N) continue;
       const risk = warRisk(f);
@@ -1427,7 +1428,7 @@
         if (x && typeof x === 'object') { if (x.until <= S.played) z.inc[i] = null; continue; }
         if (x == null) continue;
         const d = S.dragons[x]; if (!d) { z.inc[i] = null; continue; }
-        if (!d.ready) { d.incT += dt; if (d.incT >= C.incubation.seconds) { d.incT = C.incubation.seconds; d.ready = true; emit('eggReady', { id: d.id, zone: id }); } }
+        if (!d.ready) { const lw = law(); d.incT += dt * ((lw && lw.incubationSpeed) || 1); if (d.incT >= C.incubation.seconds) { d.incT = C.incubation.seconds; d.ready = true; emit('eggReady', { id: d.id, zone: id }); } }
       }
     }
     // dragon school
@@ -1445,7 +1446,7 @@
     });
     updateWild(dt);
     // scale drops
-    const p = dt / C.scales.dropMeanSeconds;
+    const ldrop = law(); const p = dt * ((ldrop && ldrop.dropMult) || 1) / C.scales.dropMeanSeconds;
     for (const k in S.dragons) { const d = S.dragons[k]; if (d.status === 'adult' && R() < p) dropScale(d); }
     updateNeeds(dt);
     updateRelations(dt);
@@ -1454,7 +1455,7 @@
     updateCourt(dt);
     updatePortals(dt);
     // market
-    const decay = Math.pow(0.5, dt / C.market.saturationHalfLife);
+    const lsat = law(); const decay = Math.pow(0.5, dt * ((lsat && lsat.satRecovery) || 1) / C.market.saturationHalfLife);
     for (let i = 0; i < NE; i++) S.market.sat[i] *= decay;
     if (S.market.offers.some(o => o.expires <= S.played)) refreshOffers();
     if (S.played - S.offersAt >= C.activities.refreshSeconds) refreshActivities();
