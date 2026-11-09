@@ -134,7 +134,10 @@
     h.className = 'herald ' + sp.kind;
     heraldLayout();
     h.style.setProperty('--c', EL[sp.f].color);
-    if (sp.who) { const pic = SP.dragon(sp.who, 2); const img = $('#herald-img'); img.src = pic.src; img.width = pic.w; img.height = pic.h; }
+    const fsz = innerWidth < 700 ? 1 : 2; const crowned = sp.kind === 'king';
+    const shut = sp.who ? SP.face(sp.who, false, fsz, crowned) : null, open = sp.who ? SP.face(sp.who, true, fsz, crowned) : null;
+    const img = $('#herald-img');
+    if (shut) { img.src = shut.src; img.width = shut.w; img.height = shut.h; }
     $('#herald-name').innerHTML = `${sp.name} <small>${sp.role}</small>`;
     const tx = $('#herald-text');
     if (sp.kind === 'king') Snd.seq([392, 523, 659, 784], 0.09, 'triangle', 0.045);
@@ -144,10 +147,12 @@
       for (let i = 1; i <= line.length; i++) {
         if (herald.hurry) { tx.textContent = line; break; }
         tx.textContent = line.slice(0, i);
+        if (shut && i % 3 === 0) img.src = (Math.floor(i / 3) % 2 ? open : shut).src;
         if (sp.kind !== 'minister' && i % 4 === 0) Snd.tone(sp.kind === 'war' ? 160 : 220 + (i % 12) * 6, 0.02, 'square', 0.012);
         await new Promise(r => setTimeout(r, 26));
       }
       herald.hurry = false;
+      if (shut) img.src = shut.src;
       await hwait(Math.min(4500, 1300 + line.length * 32));
     }
     herald.hurry = false;
@@ -194,7 +199,7 @@
       case 'decree': { const d = G.dip().decree; return d && d.until > S.played ? Math.ceil(d.until - S.played) + ' s left' : ''; }
       case 'favour': { const u = G.dip().favourUntil; return u > S.played ? 'Royal favour: scales +' + Math.round(C.diplomacy.favourScaleBonus * 100) + ' % · ' + Math.ceil(u - S.played) + ' s' : 'No royal favour'; }
       case 'envoycd': { const l = Math.ceil(C.diplomacy.envoyCooldown - (S.played - G.dip().envoyAt)); return l > 0 ? 'envoys travelling · ' + l + ' s' : 'envoys ready'; }
-      case 'warleft': { const W = S.war; if (!W) return ''; return W.phase === 'announce' ? 'war breaks out in ' + Math.ceil(C.war.announceSeconds - W.t) + ' s' : 'battle rages · ' + Math.ceil((W.fight || C.war.fightSeconds) - W.t) + ' s'; }
+      case 'warleft': { const W = S.war; if (!W) return ''; if (W.phase === 'argument') return 'argument before the throne · round ' + Math.min(C.war.argument.rounds, W.arg.round + 1) + ' · ' + W.arg.score[0] + '–' + W.arg.score[1] + ' (King–' + elName(W.attacker) + ')'; return W.phase === 'announce' ? 'war breaks out in ' + Math.ceil(C.war.announceSeconds - W.t) + ' s' : 'battle rages · ' + Math.ceil((W.fight || C.war.fightSeconds) - W.t) + ' s'; }
       case 'nextspeech': return Math.max(0, Math.ceil(C.diplomacy.speechEvery - G.dip().speechT)) + ' yrs';
       default: return '';
     }
@@ -428,7 +433,7 @@
     const king = S.king && S.dragons[S.king];
     const l = G.law();
     const al = G.alliances();
-    const war = S.war ? `<div class="bad">${icon('sword')} <b>${S.war.phase === 'announce' ? 'War threat' : 'War'}: ${sideTxt(sideOf(S.war, 'a'))} vs ${sideTxt(sideOf(S.war, 'd'))}</b></div>` : `<div>${icon('peace')} Peace in the sky.</div>`;
+    const war = S.war ? `<div class="bad">${icon('sword')} <b>${S.war.phase === 'argument' ? 'Challenge to the throne' : S.war.phase === 'announce' ? 'War threat' : 'War'}: ${sideTxt(sideOf(S.war, 'a'))} vs ${sideTxt(sideOf(S.war, 'd'))}</b></div>` : `<div>${icon('peace')} Peace in the sky.</div>`;
     const head = `<div class="panel grid cols-2">
       <div class="kingbox">${king ? `<div class="pic" data-act="dragon" data-id="${king.id}">${imgDragon(king, 3)}</div>` : ''}<div>${icon('crown')} <b>${king ? king.name : '–'}</b><br><small>Dragon King · ${elTag(S.ruler)}${king ? ' · <span data-live="age:' + king.id + '"></span>' : ''}</small></div></div>
       <div>${icon('scroll')} <b>${l ? l.name : C.lawPlaceholder.name}</b><br><small>${l ? l.text : C.lawPlaceholder.text}</small></div>
@@ -477,6 +482,7 @@
       warroom = `<div class="section"><h3>${icon('sword')} War room</h3><small data-live="warleft"></small></div>
       <div class="panel warroom"><div class="sides"><div>${sideTags(sa)}<br><small>attackers</small></div><div class="vs">VS</div><div>${sideTags(sd)}<br><small>defenders</small></div></div>
         <div class="row" style="justify-content:center;margin-top:10px">
+          ${W.phase === 'argument' ? `<button class="btn" type="button" data-act="watchArgument">${icon('crown')} Watch the argument</button>${W.arg.whisper ? '<b>You whispered for ' + (W.arg.whisper === 'king' ? 'the King' : elName(W.attacker)) + '.</b>' : `<button class="btn" type="button" data-act="whisper" data-side="king">Whisper for the King · ${C.war.argument.whisperCost} G</button><button class="btn ember" type="button" data-act="whisper" data-side="chal">Whisper for ${elName(W.attacker)} · ${C.war.argument.whisperCost} G</button>`}` : ''}
           ${W.pledge ? `<b>Your war chest backs the ${W.pledge === 'a' ? 'attackers' : 'defenders'} (+${pct(DC.pledgePower)} power).</b>` : `<button class="btn ember" type="button" data-act="pledge" data-side="a">Pledge to the attackers · ${DC.pledgeCost} G</button><button class="btn ember" type="button" data-act="pledge" data-side="d">Pledge to the defenders · ${DC.pledgeCost} G</button>`}
           ${W.phase === 'announce' ? `<button class="btn go" type="button" data-act="peace">${icon('peace')} Broker peace · ${DC.envoy.peace.cost} G · ${pct(pChance)}</button>` : ''}
         </div>
@@ -511,6 +517,51 @@
       <div class="section"><h3>${icon('scroll')} The envoy desk</h3><small>diplomacy is rolled openly – see the Log</small></div>${envoy}
       <div class="section"><h3>Pacts of peace</h3></div><div class="panel">${pactHtml}</div>
       <div class="section"><h3>Court record</h3><button class="btn small ghost" type="button" data-act="courtLog">Full record</button></div><div class="courtlog">${record}</div>`;
+  }
+  // ------------------------------------------------------------ the Chronicle of the Skies (story button)
+  const yearOf = t => C.time.startYear + Math.floor(t);
+  function reignHtml(e, asKing) {
+    const now = e.to == null; const len = (now ? S.played : e.to) - e.from;
+    const pic = SP.face(e, false, 2, asKing);
+    const v = Court.voice(e.f);
+    return `<div class="reign" style="--c:${EL[e.f].color}">
+      <div class="portrait" ${S.dragons[e.id] ? `data-act="dragon" data-id="${e.id}"` : ''}>${im(pic, e.name)}<small>${elTag(e.f)}</small></div>
+      <div><h4>${asKing ? '♛ ' : ''}${e.name}${asKing ? ' ' + v.epithet : ''}</h4>
+        <div class="years ${now ? 'now' : ''}">Year ${fmt(yearOf(e.from))} – ${now ? 'today' : 'Year ' + fmt(yearOf(e.to))} · reigned ${fmt(len)} year${Math.round(len) === 1 ? '' : 's'}${now ? ' and counting' : ''}</div>
+        <p>${Court.bio(e, asKing)}</p></div></div>`;
+  }
+  function storyModal() {
+    ui.storyTab = ui.storyTab == null ? 'kings' : ui.storyTab;
+    showModal({
+      wide: true,
+      rebuild() {
+        const ch = G.chronicle(); const tab = ui.storyTab;
+        const tabs = `<div class="chron-tabs"><button class="btn ${tab === 'kings' ? 'on' : ''}" type="button" data-act="storyTab" data-id="kings">${icon('crown')} Dragon Kings</button>${EL.map((e, f) => `<button class="btn ${String(tab) === String(f) ? 'on' : ''}" type="button" data-act="storyTab" data-id="${f}">${sw(f)} ${e.name}</button>`).join('')}</div>`;
+        let body = '';
+        if (tab === 'kings') {
+          const K = ch.kings.slice().reverse();
+          const longest = ch.kings.reduce((m, e) => { const l = (e.to == null ? S.played : e.to) - e.from; return l > m.l ? { l, e } : m; }, { l: 0, e: null });
+          body = `<div class="chron-head" style="background:var(--dither-light),#3a2a10"><div>${icon('crown', 5)}</div><div><h3>The Dragon Kings</h3>
+            <div class="stats"><span>Kings so far: <b>${ch.kings.length}</b></span><span>Ruling faction: <b>${elName(S.ruler)}</b></span>${longest.e ? `<span>Longest reign: <b>${longest.e.name}</b> (${fmt(longest.l)} years)</span>` : ''}</div>
+            <small>The eldest dragon of the ruling faction is always king. Every king's story is written here.</small></div></div>
+            ${K.map(e => reignHtml(e, true)).join('') || '<div class="empty panel">No king has been crowned yet.</div>'}`;
+        } else {
+          const f = +tab; const F = S.factions[f]; const v = Court.voice(f);
+          const wv = C.factions.worldviews[EL[f].id] || C.factions.worldviewPlaceholder;
+          const L = ch.lords[f].slice().reverse();
+          const kings = ch.kings.filter(e => e.f === f).length;
+          const status = F.ended ? '<b class="bad">has fallen</b>' : f === S.ruler ? '<b>rules the sky</b>' : 'flies free';
+          body = `<div class="chron-head" style="background:var(--dither-light),${EL[f].color}${f === 3 ? '' : ''}"><div>${L[0] && S.dragons[L[0].id] ? im(SP.face(L[0], false, 3, f === S.ruler), '') : icon('factions', 5)}</div>
+            <div><h3>${EL[f].name} · ${v.title}</h3>
+            <div class="stats"><span>Status: ${status}</span><span>Dragons: <b>${G.adultsOf(f).length}</b></span><span>Wars won/lost: <b>${F.wins || 0}/${F.losses || 0}</b></span><span>Falls: <b>${F.falls || 0}</b> · rebirths: <b>${F.reforms || 0}</b></span><span>Dragon Kings: <b>${kings}</b></span><span>Allies: <b>${G.allies(f).map(a => elName(a)).join(', ') || 'none'}</b></span></div>
+            <small>${wv.text} · Arch-enemy: ${elName(G.enemyOf(f))}</small></div></div>
+            <h3 style="color:#fff;text-shadow:2px 2px 0 #000;margin:8px 0">The lords of ${EL[f].name}</h3>
+            ${L.map(e => reignHtml(e, false)).join('') || '<div class="empty panel">No lord has led this faction yet.</div>'}`;
+        }
+        return `<h2>${icon('scroll', 3)} The Chronicle of the Skies</h2>${tabs}${body}`;
+      },
+      build(b) { b.innerHTML = this.rebuild(); },
+    }, true);
   }
   function courtLogModal() {
     const dp = G.dip();
@@ -934,6 +985,17 @@
           break;
         case 'royalSpeech': sayCourt(Court.kingSpeech(e)); if (e.decree) { const d = C.decrees.find(x => x.id === e.decree); toast(`📜 Royal decree: <b>${d.name}</b> – ${d.text}`, 'epic'); } break;
         case 'ministerSpeech': sayCourt(Court.ministerSpeech(e)); break;
+        case 'argumentStart':
+          sayCourt(Court.challenge(e));
+          toast(`${icon('crown')} <b>${elName(e.attacker)} challenges the Dragon King!</b> If the King loses the argument, it means war.`, 'war');
+          if (window.Cinema && S.settings.cinema !== false) Cinema.arenaOpen(e, { cost: C.war.argument.whisperCost, snd: Snd, chance: t => G.argueChance(t), onWhisper: side => { const r = G.whisper(side); if (!r.ok) toast(r.msg, 'bad'); else { Snd.coin(); toast('Your whisper reaches ' + (side === 'king' ? 'the King' : elName(e.attacker)) + '.', 'good'); } render(true); return r; } });
+          break;
+        case 'argumentRound': if (window.Cinema && Cinema.arenaOpenNow()) Cinema.arenaRound(e); else toast(`Round ${e.i} (${Court.TOPIC[e.topic]}): ${e.kingWon ? 'the King prevails' : elName(e.attacker) + ' strikes'} – roll ${e.roll.toFixed(3)} ${e.kingWon ? '&lt;' : '≥'} ${e.p.toFixed(2)}`, e.kingWon ? 'epic' : 'war'); break;
+        case 'argumentEnd':
+          if (window.Cinema && Cinema.arenaOpenNow()) Cinema.arenaEnd(e);
+          sayCourt(Court.verdict(e));
+          toast(e.kingWon ? `${icon('crown')} <b>The King's word holds.</b> ${elName(e.attacker)} backs down.` : `${icon('sword')} <b>The King is silenced. WAR!</b>`, e.kingWon ? 'epic' : 'war');
+          break;
         case 'peace': sayCourt(Court.peace(e)); Snd.fanfare(); toast(`${icon('peace')} Peace! ${elName(e.a)} and ${elName(e.b)} lower their claws.`, 'epic'); break;
         case 'warAnnounce': sayCourt(Court.declaration(e)); toast(sideTxt(e.sa || [e.attacker]) + ' challenge ' + sideTxt(e.sd || [e.defender]) + '! The sky darkens.', 'war'); Snd.drum(); break;
         case 'factionFallen': sayCourt(Court.lament(e)); toast(`${elTag(e.f)} <b>has fallen</b> (${e.why}). Its survivors scatter.`, 'war'); break;
@@ -1015,6 +1077,10 @@
       render(true);
     },
     courtLog: () => courtLogModal(),
+    watchArgument: () => { if (window.Cinema && Cinema.arenaOpenNow()) Cinema.arenaShow(); else toast('The argument is over.', 'bad'); },
+    whisper: d => { const r = G.whisper(d.side); if (r.ok) { Snd.coin(); toast('Your whisper reaches ' + (d.side === 'king' ? 'the King' : elName(S.war.attacker)) + '.', 'good'); } result(r); },
+    story: () => storyModal(),
+    storyTab: d => { ui.storyTab = d.id; refreshModal(); const mb = document.querySelector('.modal-box'); if (mb) mb.scrollTop = 0; },
     reset: () => { if (confirm('Really delete your save and start over?')) { localStorage.removeItem(C.saveKey); location.reload(); } },
   };
   function closeAllModals() { ui.queue = ui.queue.filter(m => m.keep); if (ui.modal && !ui.modal.busy) nextModal(); }
@@ -1060,6 +1126,7 @@
   $('#btn-sound').addEventListener('click', () => { S.settings.sound = !S.settings.sound; Snd.init(); updateTop(); });
   $('#btn-anim').addEventListener('click', () => { const o = ['auto', 'full', 'short']; S.settings.anim = o[(o.indexOf(S.settings.anim) + 1) % 3]; toast('Animations: ' + ({ auto: 'automatic', full: 'full', short: 'short' })[S.settings.anim]); updateTop(); });
   $('#btn-help').addEventListener('click', () => helpModal());
+  $('#btn-story').addEventListener('click', () => storyModal());
   $('#herald').addEventListener('click', e => { if (e.target.closest('#herald-log')) { courtLogModal(); return; } if (e.target.closest('#herald-min')) { S.settings.heraldMin = !S.settings.heraldMin; heraldLayout(); return; } herald.hurry = true; });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && ui.modal) closeModal(); });
 
@@ -1223,7 +1290,7 @@
   function drawSky(t) {
     resizeSky();
     const w = sky.width, h = sky.height, c = sctx;
-    const war = S.war; const tension = war ? (war.phase === 'announce' ? war.t / C.war.announceSeconds : 1) : 0;
+    const war = S.war; const tension = war ? (war.phase === 'argument' ? 0.3 : war.phase === 'announce' ? war.t / C.war.announceSeconds : 1) : 0;
     const bands = ['#120c34', '#1d1450', '#2a1c66', '#3b2577', '#552f86', '#7a3f8e', '#a3528f'];
     const warBands = ['#1a0610', '#2a0a14', '#3a0e18', '#561418', '#701c18', '#8a2a18', '#a63a18'];
     const bh = h / bands.length;
@@ -1245,7 +1312,7 @@
     const side = d => (!war ? 0 : wa.includes(d.faction) ? 1 : wd.includes(d.faction) ? 2 : 0);
     const ranks = { 1: [], 2: [] };
     shown.filter(d => d.role).concat(shown.filter(d => !d.role)).forEach(d => { const sd = side(d); if (sd && ranks[sd].length < 20) ranks[sd].push(d.id); });
-    const pull = !war ? 0 : war.phase === 'announce' ? smooth(Math.min(1, war.t / (C.war.announceSeconds * 0.8))) : 1;
+    const pull = !war || war.phase === 'argument' ? 0 : war.phase === 'announce' ? smooth(Math.min(1, war.t / (C.war.announceSeconds * 0.8))) : 1;
     const pos = {};
     const draw = [];
     shown.forEach(d => {
@@ -1300,7 +1367,8 @@
     const txt = `${adults.length} dragons in the sky${adults.length > shown.length ? ' (' + shown.length + ' shown to scale)' : ''}${S.king && S.dragons[S.king] ? ' · ♛ ' + S.dragons[S.king].name + ' + ' + S.gov.length + ' ministers (' + elName(S.ruler) + ')' : ''}`;
     if (info.textContent !== txt) info.textContent = txt;
     const tn = $('#tension');
-    if (war) { tn.hidden = false; tn.querySelector('.tension-label').textContent = (war.phase === 'announce' ? 'WAR THREAT: ' : 'WAR: ') + sideTxt(wa).toUpperCase() + ' vs ' + sideTxt(wd).toUpperCase(); tn.querySelector('i').style.width = (war.phase === 'announce' ? tension * 100 : 100 - war.t / (war.fight || C.war.fightSeconds) * 100) + '%'; }
+    if (war && war.phase === 'argument') { tn.hidden = false; tn.querySelector('.tension-label').textContent = 'CHALLENGE TO THE THRONE: ' + elName(war.attacker).toUpperCase() + ' ' + war.arg.score[1] + ' – ' + war.arg.score[0] + ' KING'; tn.querySelector('i').style.width = (war.t / (C.war.argument.rounds * C.war.argument.roundSeconds) * 100) + '%'; }
+    else if (war) { tn.hidden = false; tn.querySelector('.tension-label').textContent = (war.phase === 'announce' ? 'WAR THREAT: ' : 'WAR: ') + sideTxt(wa).toUpperCase() + ' vs ' + sideTxt(wd).toUpperCase(); tn.querySelector('i').style.width = (war.phase === 'announce' ? tension * 100 : 100 - war.t / (war.fight || C.war.fightSeconds) * 100) + '%'; }
     else tn.hidden = true;
   }
   const smooth = x => x * x * (3 - 2 * x);
@@ -1390,6 +1458,7 @@
 
   document.querySelectorAll('[data-icon]').forEach(el => { el.outerHTML = icon(el.dataset.icon, +el.dataset.scale || 2); });
   $('#btn-help').innerHTML = icon('help', 2);
+  $('#btn-story').innerHTML = icon('book', 2);
   boot();
   render(true); updateTop();
   $('#herald-log').innerHTML = icon('scroll', 2);

@@ -21,6 +21,9 @@ h += '<div class="row">' + ['world','school','nest','market','factions','bag','l
 h += '<div class="row">' + G.EL.slice(0, 6).map(e => img(SP.portal([e.color], 0, false, 4))).join('') + img(SP.portal(['#E8341C'], 0, true, 4)) + '</div>';
 h += '<div class="row">' + img(SP.nest('#3A86FF', false, 4)) + img(SP.burst(['#FFF6B0','#FFD23F','#FF9A2E'], 0, 3)) + img(SP.burst(['#FFFFFF','#FF6FAE','#8F5CF0'], 1, 3)) + img(SP.egg({shell:'#3b2546',spots:'#3b2546',seed:2,plain:true,line:'#1b1024'},4)) + '</div>';
 h += '<div class="row">' + [['lava', ['#FF8C1A']], ['oven', ['#E8341C']], ['nest', ['#3FA34D']], ['mix', ['#3FA34D', '#9FE3FF']]].map(x => img(SP.hatchery(x[0], x[1], 0, 4))).join('') + '</div>';
+h += '<div class="row">' + [0,1,2,3,4,5,6,7].map(i => img(SP.dragon({ id: 'p'+i, v: vs[i], mat: 0, seed: i * 16 + 3 + (i%4)*16, deep: false }, 3))).join('') + '</div>';
+h += '<div class="row">' + [0,1,2,3,4,5,6,7].map(i => img(SP.dragon({ id: 'q'+i, v: vs[i], mat: 0, seed: i * 37 + 11, deep: false }, 2))).join('') + '</div>';
+h += '<div class="row">' + [0,1,3,5].map(i => img(SP.face({ id: 'f'+i, v: vs[i], mat: 0, seed: i * 16 + 3, deep: false }, false, 3, i===0)) + img(SP.face({ id: 'f'+i, v: vs[i], mat: 0, seed: i * 16 + 3, deep: false }, true, 3, i===0))).join('') + '</div>';
 out.innerHTML = h;
 const sky = document.createElement('div'); sky.className = 'dark';
 G.EL.forEach((e, i) => { const c = SP.skyDragon(e.color, i % 2, i % 3 === 0, i === 0, 0); c.style.width = c.width * 4 + 'px'; c.style.imageRendering = 'pixelated'; c.style.margin = '6px'; sky.appendChild(c); });

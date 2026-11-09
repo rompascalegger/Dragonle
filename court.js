@@ -138,5 +138,69 @@
   function cry(f) { return pick(voice(f).cry); }
   function victoryLine(f) { return pick(voice(f).victory); }
   function defeatLine(f) { return pick(voice(f).defeat); }
-  root.Court = { kingSpeech, ministerSpeech, declaration, coronation, lament, peace, audienceReply, cry, victoryLine, defeatLine, voice };
+  // ------------------------------------------------------------ the argument before the throne
+  const TOPIC = { ehre: 'HONOUR', raum: 'SPACE TO FLY', tribut: 'TRIBUTE', brut: 'THE NESTS' };
+  const ARG = {
+    ehre: { chal: ['{f} has bled for this sky and is paid in silence! Where is our honour, {king}?', 'You wear a crown we helped forge. Bow to us, for once!', 'Every victory of this throne was won with {f} wings. Name one you won alone!'],
+      king: ['Honour is earned beneath my throne, not demanded of it.', 'Your honour is safe – as long as you remember whose sky this is.', 'I have buried braver dragons than you who spoke of honour.'] },
+    raum: { chal: ['Our wings scrape against each other! Give us room, or we take it!', 'The sky is wide, yet {f} is crammed into its corners like hatchlings.', 'We cannot breathe beneath your crown, {king}!'],
+      king: ['The sky is shared. Greed is not a grievance.', 'Fly higher, then. The clouds are free to all who obey.', 'Room is made by patience. War only makes graves.'] },
+    tribut: { chal: ['We pay and pay, and the throne grows fat!', 'Our tribute fills your hoard – what fills our bellies, {king}?', 'Not one more scale for a throne that gives nothing back!'],
+      king: ['Tribute is the price of peace. Would you rather pay in blood?', 'Every scale you give keeps the sky from burning.', 'The hoard protects you too, ungrateful one.'] },
+    brut: { chal: ['Our nests are cold and our eggs few. The throne does nothing!', 'Our young hatch into a crowded, hungry sky. No more!', 'You promised warm nests. We received ash.'],
+      king: ['Nests are warmed by patience, not by war.', 'Lay down your claws, and I will see your nests warmed.', 'Go to war, and there will be no nests left to warm.'] },
+  };
+  function argueLine(topic, who, f, king) { return fill(pick(ARG[topic][who]), { f: EL[f].name, king }); }
+  function challenge(e) {
+    const s = S(); const c = s.dragons[e.chal], k = s.dragons[e.king]; if (!c || !k) return null;
+    return { kind: 'war', f: e.attacker, who: snap(c), name: c.name, role: `Lord of ${EL[e.attacker].name} · challenges the throne`, lines: [`${k.name}! ${EL[e.attacker].name} challenges you before the throne.`, 'Out-argue me – or answer with your claws.'] };
+  }
+  function verdict(e) {
+    const s = S();
+    if (e.kingWon) { const k = s.dragons[e.king]; if (!k) return null; return { kind: 'king', f: e.ruler, who: snap(k), name: '♛ ' + k.name, role: 'wins the argument', lines: [pick(voice(e.ruler).victory), `Go home, ${EL[e.attacker].name}. The sky stays at peace.`] }; }
+    const c = s.dragons[e.chal]; if (!c) return null;
+    return { kind: 'war', f: e.attacker, who: snap(c), name: c.name, role: `of ${EL[e.attacker].name} · silenced the King`, lines: ['Words have failed. Claws will not.', pick(voice(e.attacker).cry)] };
+  }
+
+  // ------------------------------------------------------------ the chronicle: invented biographies
+  const LANDS = { fire: 'the Cinder Peaks', water: 'the Sunken Reefs', light: 'the Glass Spires', dark: 'the Hollow Caverns', lightning: 'the Storm Mesas', sand: 'the Endless Dunes', wind: 'the Cloud Cradle', stone: 'the Granite Steps', ice: 'the Frozen Reach', magma: 'the Molten Rift', nature: 'the Elder Grove', poison: 'the Thorn Marsh' };
+  const YOUTH = [
+    'was the smallest of its clutch and fought for every scrap of warmth',
+    'learned to fly before it could crawl, and crashed into every cliff it met',
+    'spent its first century guarding a single egg that never hatched',
+    'was raised by an old general who had lost every war but one',
+    'slept two hundred years on a frozen ledge and woke up hungry for the world',
+    'won its first duel at three hundred years against a dragon twice its size',
+    'was mocked for its strange colours until it outflew every bully in the nest',
+    'grew up on the stories of fallen kings and swore never to become one',
+    'was lost for a decade in a great storm and came back changed, and silent',
+    'befriended a hatchling of its arch-enemy – a secret it carried for ages',
+    'stole a scale from a sleeping king and kept it as a talisman',
+    'counted the stars every night until it knew each one by name',
+  ];
+  const TRAITS = ['patient', 'fierce', 'cunning', 'gentle', 'proud', 'restless', 'silent', 'merciless', 'beloved', 'feared', 'clever', 'stubborn'];
+  const yr = n => Math.round(n).toLocaleString('en-US');
+  function seeded(seed) { let x = (seed >>> 0) || 1; return n => { x = (x * 1103515245 + 12345) >>> 0; return x % n; }; }
+  function origin(e) {
+    const z = s => s && G.S.zones[s];
+    const zone = z(e.home);
+    if (e.raised && zone) return `the ${G.zoneName(zone)} Zone, raised by you at the Dragon School`;
+    const el = zone && zone.els.length === 1 ? EL[zone.els[0]].id : EL[e.f].id;
+    return `a wild nest in ${LANDS[el]}`;
+  }
+  function bio(e, asKing) {
+    const r = seeded(e.seed); const start = G.C.time.startYear;
+    const born = start + e.from - e.ageAt;
+    const v = voice(e.f);
+    const parts = [];
+    parts.push(`${e.name} was born around Year ${yr(born)} in ${origin(e)}.`);
+    parts.push(`As a hatchling it ${YOUTH[r(YOUTH.length)]}.`);
+    if (e.parents && e.parents.length === 2) parts.push(`It is the child of ${e.parents[0]} and ${e.parents[1]}.`);
+    parts.push(`Its scales show ${G.vecText(e.v)}${e.mat ? ', every one of them ' + G.C.material.tiers[e.mat - 1].name.toLowerCase() : ''}.`);
+    parts.push(asKing ? `At ${yr(e.ageAt)} years it was crowned Dragon King, ${v.epithet}.` : `It took the lead of ${EL[e.f].name} at the age of ${yr(e.ageAt)} years.`);
+    parts.push(`A ${TRAITS[r(TRAITS.length)]} ${asKing ? 'king' : 'lord'}, ` + (e.wars ? `it has led ${e.wars} war${e.wars === 1 ? '' : 's'} and won ${e.wins}.` : (e.to == null ? 'it has not yet led its banners to war.' : 'it never led its banners to war.')));
+    if (e.to != null) parts.push(`Its reign ended when it ${e.end}.`);
+    return parts.join(' ');
+  }
+  root.Court = { kingSpeech, ministerSpeech, declaration, coronation, lament, peace, audienceReply, cry, victoryLine, defeatLine, voice, TOPIC, argueLine, challenge, verdict, bio };
 })(typeof window !== 'undefined' ? window : globalThis);

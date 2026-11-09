@@ -98,27 +98,27 @@
       '......oossooooossooo............',
       '.......oTTo...oTTo..............',
     ] },
-    { name: 'Wyrm', rows: [
+    { name: 'Horned behemoth', rows: [
       '................................',
-      '........................oo.oo...',
-      '.......................oHooHo...',
-      '......................oSSSSSo...',
-      '.....................oSSSESSSo..',
-      '.....................oSSSSSSSNo.',
-      '..........oooo......oSSSoommmo..',
-      '........ooSSSSoo...oSSSo.oTTo...',
-      '.......oSSSSSSSSo.oSSSo.........',
-      '......oSSSBBBBSSSoSSSSo.........',
-      '.....oSSSBooooBSSSSSSo..........',
-      '....oSSSBo....oBBSSSo...........',
-      '...oSSSBo......ooooo............',
-      '..oSSSBo........................',
-      '..oSSBBo...........ooo..........',
-      '...oSSSBoooo....ooSSSSo.........',
-      '....oSSSSSSSooooSSSSBBo.........',
-      '.....ooSSSSSSSSSSSBBBo..........',
-      '.......ooooSSSSSSBBoo...........',
-      '...........ooooooo..............',
+      '.......................o...o....',
+      '......................oHo.oHo...',
+      '.....................oHHooHHo...',
+      '.................oo.oSSSSSSSo...',
+      '.......o.o.o.o..oSSoSSSSSESSo...',
+      '......oSoSoSoSooSSSSSSSSSSSSSo..',
+      '.....oSSSSSSSSSSSSSSSSoSSSSSSNo.',
+      '....oSSSSSSSSSSSSSSSSo.oommmmo..',
+      '...oSSSSSSSSSSSSSSSSSSo.oTTo....',
+      '..oSSSSSBBBBBBBBBBSSSSo.........',
+      '.oSSso.oBBBBBBBBBBBSSSo.........',
+      '.oSo..oSBBBBBBBBBBSSSSo.........',
+      '..oSoooSSBBBBBBBBSSSSso.........',
+      '...oSSSSSssoooooosSSsso.........',
+      '.....ooSSSso....oSSSSso.........',
+      '.......oSSSo....oSSSso..........',
+      '.......oSSso....oSSSo...........',
+      '......oTTTo....oTTTTo...........',
+      '.......ooo......oooo............',
     ] },
     { name: 'Wyvern', rows: [
       '................................',
@@ -197,9 +197,105 @@
     });
     return g;
   }
+  // ------------------------------------------------------------ high-detail dragons (double resolution)
+  // Every low-res cell becomes 2×2 fine pixels: scale texture, plated belly, slit-pupil eye in the element's
+  // colour, thin 1-px outline, and seeded unique features: back spikes, stripes, spots or glowing runes.
+  const EYE = { fire: '#FFB020', water: '#7FE7F2', light: '#FFFFFF', dark: '#D46BFF', lightning: '#FFF27A', sand: '#FFD27A', wind: '#C8FFF0', stone: '#FFE066', ice: '#CFF6FF', magma: '#FF7A1A', nature: '#B6FF5C', poison: '#C6FF3C' };
+  function detailGrid(d, ROWS, DW, H, flip, opts) {
+    opts = opts || {};
+    const cells = [];
+    ROWS.forEach((row, y) => { for (let x = 0; x < row.length; x++) if ('SsWw'.includes(row[x])) cells.push([x, y]); });
+    const cols = scaleColours(d, cells.length);
+    const colAt = {}; cells.forEach((q, i) => { colAt[q[0] + ',' + q[1]] = cols[i]; });
+    const base = d.mat ? G.C.material.tiers[d.mat - 1].color : G.mixColor(d.v);
+    const lum = hexRgb(base).reduce((a, b2) => a + b2, 0) / 3;
+    const line = lum < 60 ? '#06040a' : shade(base, 0.28);
+    const belly = mix(base, '#f4e6c0', 0.55);
+    const eye = d.mat ? '#FFFFFF' : (EYE[G.EL[G.dominant(d.v)].id] || '#FFE066');
+    const r = rng((d.seed ^ 0x5bd1e995) >>> 0);
+    const W2 = DW * 2, H2 = H * 2;
+    const g = grid(W2, H2), T = grid(W2, H2);
+    const yOff = H - ROWS.length;
+    const put = (x, y, c, t) => { set(g, x, y, c); set(T, x, y, t); };
+    ROWS.forEach((row, y0) => {
+      const y = (y0 + yOff) * 2;
+      for (let x0 = 0; x0 < row.length; x0++) {
+        const ch = row[x0]; if (ch === '.' || ch === 'o') continue;
+        const x = (flip ? DW - 1 - x0 : x0) * 2;
+        const L = flip ? 1 : 0, Rr = flip ? 0 : 1; // left/right column inside the 2×2 block
+        if (ch === 'S' || ch === 's' || ch === 'W' || ch === 'w') {
+          let c = colAt[x0 + ',' + y0] || base;
+          if (ch === 's') c = shade(c, 0.72);
+          if (ch === 'W') c = mix(shade(c, 0.9), '#f4e6c0', 0.25);
+          if (ch === 'w') c = shade(c, 0.58);
+          if (ch === 'S' || ch === 's') { put(x + L, y, shade(c, 1.16), 'S'); put(x + Rr, y, c, 'S'); put(x + L, y + 1, c, 'S'); put(x + Rr, y + 1, shade(c, 0.8), 'S'); }
+          else if (ch === 'W') { put(x, y, c, 'W'); put(x + 1, y, c, 'W'); put(x, y + 1, c, 'W'); put(x + 1, y + 1, shade(c, 0.88), 'W'); }
+          else { put(x, y, c, 'w'); put(x + 1, y, c, 'w'); put(x, y + 1, shade(c, 0.82), 'w'); put(x + 1, y + 1, shade(c, 0.82), 'w'); }
+        } else if (ch === 'B' || ch === 'b') {
+          const bc = ch === 'B' ? belly : shade(belly, 0.82);
+          put(x, y, bc, 'B'); put(x + 1, y, bc, 'B'); put(x, y + 1, shade(bc, 0.84), 'B'); put(x + 1, y + 1, shade(bc, 0.84), 'B');
+        } else if (ch === 'E') {
+          put(x, y, eye, 'E'); put(x + 1, y, eye, 'E'); put(x, y + 1, shade(eye, 0.8), 'E'); put(x + 1, y + 1, shade(eye, 0.8), 'E');
+          put(x + Rr, y, '#1b1024', 'E'); put(x + Rr, y + 1, '#1b1024', 'E'); // slit pupil
+        } else if (ch === 'H' || ch === 'h') {
+          const hc = ch === 'H' ? '#E8DCC0' : '#A8946E';
+          put(x, y, shade(hc, 1.1), 'H'); put(x + 1, y, hc, 'H'); put(x, y + 1, hc, 'H'); put(x + 1, y + 1, shade(hc, 0.78), 'H');
+        } else if (ch === 'T') {
+          put(x, y, '#F4F0E6', 'T'); put(x + 1, y, '#F4F0E6', 'T'); put(x, y + 1, '#C9C2B0', 'T'); put(x + 1, y + 1, '#C9C2B0', 'T');
+        } else if (ch === 'R') {
+          put(x, y, '#7a1424', 'R'); put(x + 1, y, '#7a1424', 'R'); put(x, y + 1, '#3a0810', 'R'); put(x + 1, y + 1, '#3a0810', 'R');
+        } else if (ch === 'm' || ch === 'N') {
+          put(x, y, line, 'm'); put(x + 1, y, line, 'm'); put(x, y + 1, shade(base, 0.55), 'S'); put(x + 1, y + 1, shade(base, 0.55), 'S');
+        }
+      }
+    });
+    // unique features from the seed
+    const spike = Math.floor(r() * 3), mark = Math.floor(r() * 4), period = 4 + Math.floor(r() * 3), phase = Math.floor(r() * period);
+    if (mark === 1) for (let y = 0; y < H2; y++) for (let x = 0; x < W2; x++) if (T.c[y][x] === 'S' && Math.floor((x + y * 0.5) / 4) % 3 === 0) g.c[y][x] = shade(g.c[y][x], 0.8);
+    if (mark === 2) for (let i = 0; i < 14; i++) { const x = Math.floor(r() * W2), y = Math.floor(r() * H2); if (get(T, x, y) === 'S' && get(T, x + 1, y + 1) === 'S') { g.c[y][x] = shade(g.c[y][x], 1.3); g.c[y + 1][x + 1] = shade(g.c[y + 1][x + 1], 1.3); } }
+    if (mark === 3) for (let i = 0; i < 9; i++) { const x = Math.floor(r() * W2), y = Math.floor(r() * H2); if (get(T, x, y) === 'S') g.c[y][x] = eye; }
+    if (spike && !opts.face) {
+      const tops = [];
+      for (let x = 0; x < W2; x++) for (let y = 1; y < H2; y++) { if (get(T, x, y) && !get(T, x, y - 1)) { if (get(T, x, y) === 'S') tops.push([x, y]); break; } }
+      const sc = spike === 1 ? shade(base, 0.55) : '#E8DCC0';
+      tops.forEach(([x, y]) => { if ((x + phase) % period === 0) { for (let k = 1; k <= spike + 1; k++) { set(g, x, y - k, sc); set(T, x, y - k, 'H'); } if (spike === 2) set(g, x + (flip ? 1 : -1), y - 1, sc); } });
+    }
+    if (d.mat) for (let i = 0; i < 10; i++) { const x = Math.floor(r() * W2), y = Math.floor(r() * H2); if (get(T, x, y) === 'S') g.c[y][x] = '#FFFFFF'; }
+    if (opts.crown) {
+      const cx = opts.crown[0], cy = opts.crown[1];
+      const C = ['y.y.y', 'yyyyy', 'yrybyy'.slice(0, 5), 'yyyyy'];
+      C.forEach((row, y) => { for (let x = 0; x < row.length; x++) { const ch = row[x]; if (ch === '.') continue; set(g, cx + x, cy + y, ch === 'r' ? '#E04434' : ch === 'b' ? '#3A76E0' : (y === 0 ? '#FFF27A' : '#FFD23F')); } });
+    }
+    outline(g, line);
+    return g;
+  }
+  const hdScale = scale => Math.max(1, Math.ceil(scale / 2));
   function dragon(d, scale, flip) {
     scale = scale || 3;
-    return url('d|' + d.id + '|' + d.v.join('') + '|' + d.mat + '|' + (d.deep ? 1 : 0) + '|' + scale + '|' + (flip ? 1 : 0), () => dragonGrid(d, flip), scale);
+    const hs = hdScale(scale);
+    return url('dh|' + d.id + '|' + d.v.join('') + '|' + d.mat + '|' + (d.deep ? 1 : 0) + '|' + d.seed + '|' + hs + '|' + (flip ? 1 : 0), () => { const b2 = bodyOf(d); return detailGrid(d, b2.rows, b2.w, 22, flip); }, hs);
+  }
+  // ------------------------------------------------------------ talking face portraits
+  const FACE = [
+    '........................',
+    '..oo....................',
+    '.oHHoo..................',
+    '..ohHHoo....oo..........',
+    '...ohhHHoooSSoo.........',
+    '....oohSSSSSSSSoo.......',
+    '...oSSSSSSSSSSSSSoo.....',
+    '..oSSSSSSSSSoooSSSSo....',
+    '..oSSSSSSSSoEEoSSSSSoo..',
+    '.oSSSSSSSSSSoooSSSSSSSo.',
+    '.osSSSSSSSSSSSSSSSSSSSNo',
+  ];
+  const FACE_SHUT = ['.ossSSSSSSSSSSSoooooooo.', '..ossSSSSSSSSSmmmmmmo...', '..ossSSSSBBBBBBBBBBo....'];
+  const FACE_OPEN = ['.ossSSSSSSSSSSoTTTTTTo..', '..ossSSSSSSSSoRRRRRRo...', '..ossSSSSBBBBoTTTTTo....'];
+  const FACE_END = ['...ossSSBBBBBBBBBo......', '...osssSBBBBBBBo........', '....oossBBBBBo..........', '......ooooooo...........'];
+  function face(d, open, scale, king, flip) {
+    scale = scale || 2;
+    const rows = FACE.concat(open ? FACE_OPEN : FACE_SHUT, FACE_END);
+    return url('fc|' + d.id + '|' + d.v.join('') + '|' + d.mat + '|' + d.seed + '|' + (open ? 1 : 0) + '|' + (king ? 1 : 0) + '|' + (flip ? 1 : 0) + '|' + scale, () => detailGrid(d, rows, 24, 18, !!flip, { face: true, crown: king ? [flip ? 48 - 1 - 20 - 4 : 20, 1] : null }), scale);
   }
 
   // ------------------------------------------------------------ egg (procedural)
@@ -417,6 +513,7 @@
     star: ['.....kk.....', '.....ky.....', '....kyyk....', 'kkkkkyykkkkk', '.kyyyyyyyyk.', '..kyywyyyk..', '...kyyyyk...', '..kyykkyyk..', '..kyk..kyk..', '.kk.....kk..', '............', '............'],
     scroll: ['.kkkkkkkkk..', 'ktttttttttk.', 'kkttttttttk.', '.kttkkktttk.', '.kttttttttk.', '.kttkkkkttk.', '.kttttttttk.', '.kttkkttttk.', '.kttttttttkk', '.kttttttttttk', '..kkkkkkkkkk', '............'],
     dragons: ['...k....k...', '..kyk..kyk..', '..kyyk.kyk..', '..kggkkggk..', '.kgggggggk..', '.kggwkgggk..', 'kgggkkgggggk', 'kggggggggrgk', 'kgGGggggkkk.', '.kgGGgggk...', '..kgGGggk...', '...kkkkkk...'],
+    book: ['............', '.kkkk..kkkk.', 'krrrrkkrrrrk', 'krwwrkkrwwrk', 'krrrrkkrrrrk', 'krwwrkkrwwrk', 'krrrrkkrrrrk', 'krwwrkkrwwrk', 'krrrrkkrrrrk', 'kRRRRkkRRRRk', '.kkkkkkkkkk.', '............'],
     peace: ['............', '...kkkkkk...', '..kgggggGk..', '.kgggwggggk.', '.kggggggggk.', '..kGggggGk..', '...kGggGk...', '....kGGk....', '.....kk.....', '....knNk....', '....kkkk....', '............'],
   };
   function icon(name, scale) {
@@ -445,5 +542,5 @@
     });
   }
 
-  root.Sprites = { dragon, variantName, egg, nest, burst, scaleSprite, scaleColor, portal, hatchery, icon, iconImg, skyDragon, shade, mix, INK };
+  root.Sprites = { dragon, face, variantName, egg, nest, burst, scaleSprite, scaleColor, portal, hatchery, icon, iconImg, skyDragon, shade, mix, INK };
 })(window);

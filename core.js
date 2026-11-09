@@ -723,6 +723,28 @@
     return (N / K) * (1 - needsMean(f)) * (1 - S.factions[f].k);
   }
   function eldest(f) { const a = adultsOf(f); if (!a.length) return null; return a.reduce((m, d) => (d.t1000 < m.t1000 ? d : m)); }
+  function CH() { if (!S.chron) S.chron = { lords: Array.from({ length: NE }, () => []), kings: [] }; return S.chron; }
+  function chronSnap(d, f) {
+    const pa = d.parents ? d.parents.map(id => S.dragons[id]).filter(Boolean).map(x => x.name) : [];
+    return { id: d.id, name: d.name, f, v: d.v.slice(), mat: d.mat, seed: d.seed, deep: d.deep, home: d.zone, raised: !!d.raised, parents: pa, ageAt: Math.round(ageOf(d)), from: Math.round(S.played), to: null, end: null, wars: 0, wins: 0 };
+  }
+  function closeReign(e, f, why) {
+    if (!e || e.to != null) return;
+    e.to = Math.round(S.played);
+    const d = S.dragons[e.id];
+    e.end = why || (!d ? 'fell in battle' : d.status === 'exile' ? 'went into exile' : d.faction !== f ? 'defected to ' + EL[d.faction].name : 'gave way to an elder');
+  }
+  function updateChronicle() {
+    const ch = CH();
+    for (let f = 0; f < NE; f++) {
+      const L = ch.lords[f]; const cur = L[L.length - 1]; const e = eldest(f);
+      if (cur && cur.to == null && (!e || e.id !== cur.id)) closeReign(cur, f, S.factions[f].ended ? 'saw the faction fall' : null);
+      if (e && (!cur || cur.to != null || cur.id !== e.id)) { L.push(chronSnap(e, f)); if (L.length > 40) L.shift(); }
+    }
+    const K = ch.kings; const ck = K[K.length - 1];
+    if (ck && ck.to == null && ck.id !== S.king) closeReign(ck, ck.f, S.dragons[ck.id] && S.dragons[ck.id].faction === ck.f && S.ruler !== ck.f ? 'lost the throne when ' + EL[S.ruler].name + ' took the sky' : null);
+    if (S.king && (!ck || ck.to != null || ck.id !== S.king)) { const k = S.dragons[S.king]; if (k) { K.push(chronSnap(k, S.ruler)); if (K.length > 60) K.shift(); } }
+  }
   function updateRoles(silent) {
     if (!adultsOf(S.ruler).length) {
       let best = -1, bp = 0;
@@ -742,6 +764,7 @@
         if (!silent && oldKing !== S.king) { emit('coronation', { king: k.id, f: S.ruler }); logEvent(k.name + ' becomes Dragon King (' + EL[S.ruler].name + ')', 'epic'); }
       } else S.gov = [];
     }
+    updateChronicle();
   }
   function setRuler(f, reason, silent) {
     S.ruler = f;
@@ -800,6 +823,7 @@
     if (S.war) {
       const W = S.war; W.t += dt;
       if (!W.sa) { const sides = warSides(W.attacker, W.defender); W.sa = sides.sa; W.sd = sides.sd; }
+      if (W.phase === 'argument') { if (W.t >= (W.arg.round + 1) * C.war.argument.roundSeconds) argueRound(); return; }
       if (W.phase === 'announce' && W.t >= C.war.announceSeconds) {
         // allies who formed an alliance during the threat still rally to their friends
         const sides = warSides(W.attacker, W.defender); W.sa = sides.sa; W.sd = sides.sd;
@@ -832,11 +856,75 @@
         const pressure = Math.max(1, total / (C.factions.capacity * NE));
         const sides = warSides(f, def);
         S.war = { phase: 'announce', t: 0, attacker: f, defender: def, sa: sides.sa, sd: sides.sd, fight: Math.max(C.war.fightSecondsMin, C.war.fightSeconds / pressure) };
+        // a faction that challenges the throne must first out-argue the Dragon King
+        const king = S.king && S.dragons[S.king];
+        if (def === S.ruler && king && king.faction === S.ruler) {
+          const chal = eldest(f); const AR = C.war.argument;
+          S.war.phase = 'argument';
+          S.war.arg = { round: 0, score: [0, 0], topics: shuffle(['ehre', 'raum', 'tribut', 'brut']).slice(0, AR.rounds), rounds: [], king: king.id, chal: chal ? chal.id : null, whisper: null };
+          logEvent(EL[f].name + ' challenges the Dragon King to an argument before the throne', 'war');
+          emit('argumentStart', { attacker: f, ruler: S.ruler, king: king.id, chal: chal ? chal.id : null, topics: S.war.arg.topics.slice() });
+          return;
+        }
         logEvent(C.speech.war.replace('{a}', sideName(sides.sa)).replace('{b}', sideName(sides.sd)), 'war');
         emit('warAnnounce', { attacker: f, defender: def, sa: sides.sa, sd: sides.sd });
         return;
       }
     }
+  }
+  function argueChance(topic) {
+    const W = S.war; const AR = C.war.argument; const r = S.ruler, c = W.attacker;
+    const pk = factionPower(r), pc = factionPower(c);
+    const need = topic ? S.factions[c].needs[topic] : needsMean(c) * 100;
+    let p = AR.base + AR.powerWeight * (pk - pc) / Math.max(0.001, pk + pc) - AR.grievanceWeight * (1 - need / 100);
+    if (W.arg.whisper === 'king') p += AR.whisper; else if (W.arg.whisper === 'chal') p -= AR.whisper;
+    return clamp(p, AR.min, AR.max);
+  }
+  function argueRound() {
+    const W = S.war, A = W.arg, AR = C.war.argument;
+    if (!S.dragons[A.king] || S.dragons[A.king].faction !== S.ruler || S.ruler !== W.defender) { A.score[1] = AR.rounds; } // the king is gone: nobody holds the throne's word
+    else {
+      const topic = A.topics[A.round];
+      const p = argueChance(topic); const roll = R();
+      logRoll('Argument before the throne, round ' + (A.round + 1) + ' (' + topic + ')', Math.round(roll * 1000) / 1000, '< ' + p.toFixed(2) + ' = the King prevails');
+      const kingWon = roll < p;
+      A.score[kingWon ? 0 : 1]++; A.rounds.push({ topic, p, roll, kingWon }); A.round++;
+      emit('argumentRound', { i: A.round, topic, p, roll, kingWon, score: A.score.slice(), attacker: W.attacker, king: A.king, chal: A.chal });
+    }
+    const need = Math.floor(AR.rounds / 2) + 1;
+    if (A.score[0] < need && A.score[1] < need) return;
+    const kingWon = A.score[0] >= need;
+    if (A.whisper) {
+      const yours = (A.whisper === 'king') === kingWon;
+      if (yours) addRep(kingWon ? S.ruler : W.attacker, AR.whisperWinRep, false);
+    }
+    if (kingWon) {
+      const F = S.factions[W.attacker];
+      F.needs.ehre = Math.max(0, F.needs.ehre - AR.loseHonour);
+      S.factions[S.ruler].needs.ehre = Math.min(100, S.factions[S.ruler].needs.ehre + AR.winHonour);
+      changeRel(W.attacker, S.ruler, -AR.relHit, false);
+      const res = { kingWon: true, attacker: W.attacker, ruler: S.ruler, king: A.king, chal: A.chal, score: A.score.slice() };
+      S.war = null; S.warCooldown = C.war.cooldownSeconds;
+      logEvent('The Dragon King wins the argument – ' + EL[res.attacker].name + ' backs down', 'epic');
+      emit('argumentEnd', res);
+    } else {
+      W.phase = 'announce'; W.t = 0;
+      const sides = warSides(W.attacker, W.defender); W.sa = sides.sa; W.sd = sides.sd;
+      logEvent('The Dragon King loses the argument – war! ' + C.speech.war.replace('{a}', sideName(W.sa)).replace('{b}', sideName(W.sd)), 'war');
+      emit('argumentEnd', { kingWon: false, attacker: W.attacker, ruler: S.ruler, king: A.king, chal: A.chal, score: A.score.slice() });
+      emit('warAnnounce', { attacker: W.attacker, defender: W.defender, sa: W.sa, sd: W.sd });
+    }
+  }
+  function whisper(side) {
+    const W = S.war; const AR = C.war.argument;
+    if (!W || W.phase !== 'argument') return { ok: false, msg: 'There is no argument before the throne.' };
+    if (W.arg.whisper) return { ok: false, msg: 'You have already whispered to one side.' };
+    if (!pay(AR.whisperCost)) return { ok: false, msg: 'Not enough gold (' + AR.whisperCost + ' G).' };
+    W.arg.whisper = side;
+    const ours = side === 'king' ? S.ruler : W.attacker, theirs = side === 'king' ? W.attacker : S.ruler;
+    addRep(ours, AR.whisperRep, false); addRep(theirs, -AR.whisperRep / 2, false);
+    logEvent('You whisper arguments to ' + (side === 'king' ? 'the Dragon King' : 'the challenger'), 'war');
+    return { ok: true };
   }
   function resolveWar() {
     const W = S.war; const A = W.attacker, D = W.defender;
@@ -892,6 +980,12 @@
     const collapsed = [];
     lside.forEach(f => { if (adultsOf(f).length < C.war.collapseBelow) { endFaction(f, 'lost the war'); collapsed.push(f); } });
     S.stats.wars++;
+    const ch = CH();
+    sa.concat(sd).forEach(f => {
+      const won = wside.includes(f);
+      const L = ch.lords[f][ch.lords[f].length - 1]; if (L && L.to == null) { L.wars++; if (won) L.wins++; }
+      const K = ch.kings[ch.kings.length - 1]; if (K && K.to == null && K.f === f) { K.wars++; if (won) K.wins++; }
+    });
     let pledge = null;
     if (W.pledge) {
       const won = (W.pledge === 'a') === attackerWins;
@@ -1393,6 +1487,7 @@
     setPair, clearPair, buyPortal, buyBackdoor, toggleBackdoor, doActivity, refreshActivities,
     // court & diplomacy
     dip: () => D(), decree, hasPact, champion, audience, envoy, envoyChance, envoyCheck, pledge,
+    argueChance, whisper, chronicle: () => CH(),
     // tests & simulation
     _rollClutch: rollClutch, _inherit: inherit, _genVector: genVector, _R: () => R(),
   };

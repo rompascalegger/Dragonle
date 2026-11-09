@@ -301,6 +301,13 @@
       ehreSwing: 30,
       relationHit: 25,
       tau: 9000 / -Math.log(0.9), // [FIXED] strength S(a) = exp(-(a-1000)/tau)
+      // a faction that challenges the ruler must first out-argue the Dragon King (best of 3)
+      argument: {
+        rounds: 3, roundSeconds: 8,
+        base: 0.55, powerWeight: 0.3, grievanceWeight: 0.35, min: 0.08, max: 0.92,
+        whisper: 0.15, whisperCost: 120, whisperRep: 200, whisperWinRep: 300,
+        loseHonour: 15, winHonour: 10, relHit: 10,
+      },
     },
 
     // ---------------------------------------------------------------- Rule [PROPOSAL]

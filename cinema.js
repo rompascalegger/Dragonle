@@ -214,5 +214,121 @@
     cancelAnimationFrame(raf); raf = 0;
     if (el) { el.remove(); el = null; }
   }
-  root.Cinema = { war, active: () => !!el };
+  // ------------------------------------------------------------ the argument before the throne
+  const AR = { el: null, q: [], busy: false, opt: null, ev: null, hidden: false, score: [0, 0] };
+  const aq = s => AR.el && AR.el.querySelector(s);
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const snapOf = d => d && { id: d.id, name: d.name, v: d.v, mat: d.mat, seed: d.seed, deep: d.deep };
+  async function talk(side, text) {
+    const who = side === 'king' ? AR.k : AR.c; const img = aq('.ar-side.' + side + ' .face'); const box = aq('.ar-say.' + side);
+    if (!box) return;
+    box.classList.add('on'); box.textContent = '';
+    const shut = SP.face(who, false, 3, side === 'king', side === 'king'), open = SP.face(who, true, 3, side === 'king', side === 'king');
+    for (let i = 1; i <= text.length; i++) {
+      if (!AR.el) return;
+      box.textContent = text.slice(0, i);
+      if (img && i % 3 === 0) img.src = (Math.floor(i / 3) % 2 ? open : shut).src;
+      if (i % 4 === 0) AR.opt.snd.tone(side === 'king' ? 196 : 262, 0.02, 'square', 0.012);
+      await sleep(AR.hidden ? 0 : 22);
+    }
+    if (img) img.src = shut.src;
+  }
+  function setOdds(topic) {
+    const o = aq('.ar-odds'); if (!o || !topic) return;
+    const p = AR.opt.chance(topic);
+    o.innerHTML = `next: <b>${root.Court.TOPIC[topic]}</b> · the King prevails with <b>${Math.round(p * 100)} %</b>`;
+    aq('.ar-gauge .k').style.width = (p * 100) + '%';
+  }
+  function pips() {
+    ['chal', 'king'].forEach((side, i) => { const n = AR.score[side === 'king' ? 0 : 1]; aq('.ar-side.' + side + ' .pips').innerHTML = [0, 1].map(k => `<i class="${k < n ? 'on' : ''}"></i>`).join(''); });
+  }
+  function arenaOpen(ev, opt) {
+    arenaClose();
+    const S = G.S; const k = S.dragons[ev.king], c = S.dragons[ev.chal]; if (!k || !c) return;
+    AR.opt = opt; AR.ev = ev; AR.q = []; AR.busy = false; AR.hidden = false; AR.score = [0, 0];
+    AR.k = snapOf(k); AR.c = snapOf(c);
+    const fc = EL[ev.attacker], fk = EL[ev.ruler];
+    const el2 = document.createElement('div'); el2.className = 'arena on'; AR.el = el2;
+    el2.style.setProperty('--cc', fc.color); el2.style.setProperty('--ck', fk.color);
+    const fs = SP.face(AR.c, false, 3, false, false), ks = SP.face(AR.k, false, 3, true, true);
+    el2.innerHTML = `<div class="ar-box">
+      <div class="ar-head"><small>A CHALLENGE TO THE THRONE</small><b>${c.name} <i>vs</i> ♛ ${k.name}</b><em>best of three – if the King loses the argument, war is the answer</em></div>
+      <div class="ar-stage">
+        <div class="ar-side chal"><img class="face" src="${fs.src}" width="${fs.w}" height="${fs.h}" alt=""><div class="plate"><b>${c.name}</b><small>Lord of ${fc.name}</small></div><div class="pips"></div></div>
+        <div class="ar-mid"><div class="ar-topic">THE THRONE ROOM</div><div class="ar-gauge"><i class="k"></i><b class="needle"></b></div><div class="ar-odds"></div><div class="ar-verdict"></div></div>
+        <div class="ar-side king"><img class="face" src="${ks.src}" width="${ks.w}" height="${ks.h}" alt=""><div class="plate"><b>♛ ${k.name}</b><small>Dragon King of ${fk.name}</small></div><div class="pips"></div></div>
+      </div>
+      <div class="ar-says"><div class="ar-say chal bubble"></div><div class="ar-say king bubble"></div></div>
+      <div class="ar-actions">
+        <button class="btn ember" type="button" data-w="chal">Whisper for ${fc.name} · ${opt.cost} G</button>
+        <button class="btn" type="button" data-w="king">Whisper for the King · ${opt.cost} G</button>
+        <button class="btn ghost" type="button" data-w="away">Watch from afar</button>
+      </div>
+      <div class="ar-final"></div></div>`;
+    document.body.appendChild(el2);
+    pips(); setOdds(ev.topics[0]);
+    el2.addEventListener('click', e => {
+      const b = e.target.closest('[data-w]'); if (!b) return;
+      if (b.dataset.w === 'away') { AR.hidden = true; el2.classList.remove('on'); return; }
+      const r = opt.onWhisper(b.dataset.w);
+      if (r && r.ok) { el2.querySelectorAll('[data-w="king"],[data-w="chal"]').forEach(x => { x.disabled = true; }); b.textContent = 'Your whisper rides with ' + (b.dataset.w === 'king' ? 'the King' : fc.name); setOdds(ev.topics[AR.score[0] + AR.score[1]]); }
+    });
+    AR.q.push(async () => {
+      opt.snd.drum();
+      await talk('chal', `${k.name}! ${fc.name} challenges you before the throne. Out-argue me – or answer with your claws.`);
+      await sleep(400);
+      await talk('king', root.Court.voice(ev.ruler).open[0]);
+    });
+    run();
+  }
+  async function run() {
+    if (AR.busy) return; AR.busy = true;
+    while (AR.q.length && AR.el) { const job = AR.q.shift(); await job(); }
+    AR.busy = false;
+  }
+  function arenaRound(ev) {
+    if (!AR.el) return;
+    AR.q.push(async () => {
+      const S = G.S; const fc = EL[ev.attacker];
+      aq('.ar-verdict').className = 'ar-verdict'; aq('.ar-verdict').textContent = '';
+      aq('.ar-topic').textContent = `ROUND ${ev.i} – ${root.Court.TOPIC[ev.topic]}`;
+      aq('.ar-gauge .k').style.width = (ev.p * 100) + '%';
+      aq('.ar-odds').innerHTML = `the King prevails if the roll is below <b>${ev.p.toFixed(2)}</b>`;
+      await talk('chal', root.Court.argueLine(ev.topic, 'chal', ev.attacker, AR.k.name));
+      await sleep(250);
+      await talk('king', root.Court.argueLine(ev.topic, 'king', ev.attacker, AR.k.name));
+      // the needle sweeps, hesitates, lands on the real roll
+      const nd = aq('.ar-gauge .needle');
+      for (let i = 0; i < 16 && AR.el; i++) { nd.style.left = (Math.random() * 100) + '%'; AR.opt.snd.tone(1100, 0.02, 'square', 0.02); await sleep(AR.hidden ? 0 : 50 + i * 10); }
+      if (!AR.el) return;
+      nd.style.left = (ev.roll * 100) + '%';
+      AR.score = ev.score.slice(); pips();
+      const v = aq('.ar-verdict');
+      v.textContent = ev.kingWon ? 'THE KING PREVAILS!' : fc.name.toUpperCase() + ' STRIKES!';
+      v.className = 'ar-verdict on ' + (ev.kingWon ? 'k' : 'c');
+      aq('.ar-odds').innerHTML = `roll <b>${ev.roll.toFixed(3)}</b> ${ev.kingWon ? '&lt;' : '≥'} ${ev.p.toFixed(2)}`;
+      AR.el.classList.add('hit'); setTimeout(() => AR.el && AR.el.classList.remove('hit'), 300);
+      if (ev.kingWon) AR.opt.snd.tone(523, 0.25, 'triangle', 0.07); else AR.opt.snd.tone(147, 0.3, 'sawtooth', 0.07);
+      await sleep(AR.hidden ? 0 : 1400);
+      const next = AR.ev.topics[ev.i]; if (next && ev.score[0] < 2 && ev.score[1] < 2) setOdds(next);
+    });
+    run();
+  }
+  function arenaEnd(ev) {
+    if (!AR.el) return;
+    AR.q.push(async () => {
+      const f = aq('.ar-final');
+      AR.el.querySelector('.ar-actions').style.visibility = 'hidden';
+      if (ev.kingWon) { f.innerHTML = `<b>THE KING'S WORD HOLDS</b><span>${EL[ev.attacker].name} backs down. No war – for now.</span>`; f.className = 'ar-final on k'; AR.opt.snd.epic(); }
+      else { f.innerHTML = `<b>THE KING IS SILENCED</b><span>Words have failed. WAR!</span>`; f.className = 'ar-final on c'; AR.opt.snd.drum(); AR.el.classList.add('hit'); }
+      if (AR.hidden) { arenaClose(); return; }
+      await talk(ev.kingWon ? 'king' : 'chal', ev.kingWon ? root.Court.victoryLine(ev.ruler) : root.Court.cry(ev.attacker));
+      await sleep(2600);
+      arenaClose();
+    });
+    run();
+  }
+  function arenaShow() { if (AR.el) { AR.hidden = false; AR.el.classList.add('on'); } }
+  function arenaClose() { if (AR.el) { AR.el.remove(); AR.el = null; } AR.q = []; AR.busy = false; }
+  root.Cinema = { war, active: () => !!el, arenaOpen, arenaRound, arenaEnd, arenaShow, arenaOpenNow: () => !!AR.el };
 })(window);
