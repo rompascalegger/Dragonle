@@ -129,7 +129,13 @@
   }
   async function heraldNext() {
     const sp = herald.q.shift(); const h = $('#herald');
-    if (!sp) { herald.busy = false; h.classList.add('idle'); return; }
+    if (!sp) {
+      herald.busy = false; h.classList.add('idle');
+      clearTimeout(herald.hideT);
+      herald.hideT = setTimeout(() => { if (!herald.busy) { h.classList.add('gone'); document.body.classList.remove('has-herald'); } }, 6000);
+      return;
+    }
+    clearTimeout(herald.hideT);
     herald.busy = true; h.hidden = false;
     h.className = 'herald ' + sp.kind;
     heraldLayout();
@@ -215,32 +221,35 @@
 
   SCREENS.world = function () {
     const zones = Object.values(S.zones).sort((a, b) => (a.els.length - b.els.length) || (a.els[0] - b.els[0]));
-    const cards = zones.map(z => {
-      if (!z.unlocked) {
-        const f = z.els[0];
-        return `<div class="portal">
-          <div class="art">${portalArt(z, true)}</div>
-          <div class="pname">${G.zoneName(z)}</div>
-          <div class="pinfo">Honored with ${elName(f)} or one of its allies</div>
-          <button class="btn small" type="button" data-act="buyPortal" data-id="${z.id}">${icon('coin')} Open: ${fmt(G.portalPrice())}</button>
-        </div>`;
-      }
+    const realms = zones.filter(z => z.unlocked).map(z => {
       const open = G.zoneOpen(z);
       const used = z.inc.slice(0, z.slots).filter(x => x != null).length;
       const ready = z.inc.filter(x => isNum(x) && S.dragons[x] && S.dragons[x].ready).length;
       const coll = z.ground.filter(s => G.canCollect(s)).length;
       const school = G.list(d => d.status === 'school' && d.zone === z.id).length;
+      const residents = G.list(d => d.status === 'adult' && d.zone === z.id).length;
       const back = G.zoneHostile(z) ? (z.backdoor ? `<button class="btn small ${z.backdoorOn ? 'ember' : 'ghost'}" type="button" data-act="toggleBackdoor" data-id="${z.id}">Backdoor ${z.backdoorOn ? 'on' : 'off'}</button>` : `<button class="btn small" type="button" data-act="backdoor" data-id="${z.id}">Backdoor device ${fmt(C.portals.backdoorPrice)} G</button>`) : '';
-      return `<div class="portal ${open ? '' : 'closed'}" ${open ? `data-act="zone" data-id="${z.id}"` : ''}>
-        ${ready || coll ? `<span class="badge">${ready ? ready + ' egg' + (ready > 1 ? 's' : '') : ''}${ready && coll ? ' · ' : ''}${coll ? coll + ' ✦' : ''}</span>` : ''}
+      return `<div class="realm ${open ? '' : 'closed'}" style="--rc:${G.zoneColor(z)}" ${open ? `data-act="zone" data-id="${z.id}"` : ''}>
+        ${ready || coll ? `<span class="badge">${ready ? ready + ' egg' + (ready > 1 ? 's' : '') + ' ready' : ''}${ready && coll ? ' · ' : ''}${coll ? coll + ' scales' : ''}</span>` : ''}
         <div class="art">${portalArt(z, false)}</div>
-        <div class="pname">${G.zoneName(z)}</div>
-        <div class="pinfo"><span>Brood <b>${used}/${z.slots}</b></span><span>School <b>${school}</b></span><span>Ground <b>${z.ground.length}</b></span></div>
-        ${open ? '' : '<div class="bad">Portal closed – reputation hostile</div>'}${back}
-      </div>`;
+        <div><h3>${G.zoneName(z)}</h3><small>${G.incubatorOf(z).name}</small>
+          <div class="stat"><span>Brood slots</span><b>${used}/${z.slots}</b></div>
+          <div class="stat"><span>Pupils</span><b>${school}</b></div>
+          <div class="stat"><span>Grown here</span><b>${residents}</b></div>
+          <div class="stat"><span>Scales lying</span><b>${z.ground.length}</b></div>
+          ${open ? '' : '<div class="bad"><b>Portal closed – reputation hostile</b></div>'}${back}
+        </div></div>`;
     }).join('');
-    return `<div class="screen-head"><h2>The Dragon World</h2><span class="sub">Pick a portal. Eggs hatch in the elemental zones.</span></div>
-      <div class="hub">${cards}</div>${tutorialPanel()}`;
+    const sealed = zones.filter(z => !z.unlocked).map(z => {
+      const f = z.els[0];
+      return `<div class="seal"><div>${im(SP.portal([EL[f].color], 0, true, 2), '')}</div>
+        <div><div class="nm">${sw(f)} ${G.zoneName(z)}</div><small>Honored with ${elName(f)} or an ally</small>
+        <button class="btn small" type="button" data-act="buyPortal" data-id="${z.id}">${icon('coin')} ${fmt(G.portalPrice())}</button></div></div>`;
+    }).join('');
+    return `<div class="screen-head"><h2>The Dragon World</h2><span class="sub">Your open realms. Eggs hatch in the elemental zones.</span></div>
+      <div class="realms">${realms}</div>
+      ${sealed ? `<div class="section"><h3>Sealed portals</h3><small>win a faction's favour – or pay – to open them</small></div><div class="sealed">${sealed}</div>` : ''}
+      ${tutorialPanel()}`;
   };
 
   function tutorialPanel() {
@@ -1302,7 +1311,7 @@
 
   // ------------------------------------------------------------ sky
   const sky = $('#sky'); const sctx = sky.getContext('2d');
-  const PX = 3;
+  const PX = 2;
   let stars = [];
   function resizeSky() {
     const w = Math.max(80, Math.floor(sky.clientWidth / PX)), h = Math.max(30, Math.floor(sky.clientHeight / PX));
@@ -1317,8 +1326,8 @@
     resizeSky();
     const w = sky.width, h = sky.height, c = sctx;
     const war = S.war; const tension = war ? (war.phase === 'argument' ? 0.3 : war.phase === 'announce' ? war.t / C.war.announceSeconds : 1) : 0;
-    const bands = ['#120c34', '#1d1450', '#2a1c66', '#3b2577', '#552f86', '#7a3f8e', '#a3528f'];
-    const warBands = ['#1a0610', '#2a0a14', '#3a0e18', '#561418', '#701c18', '#8a2a18', '#a63a18'];
+    const bands = ['#0a0a1f', '#10112e', '#17183f', '#201f52', '#2e2560', '#432b69', '#5e336c', '#7f3e6a', '#a5506a'];
+    const warBands = ['#14050c', '#1c0710', '#260a14', '#330e16', '#441218', '#58181a', '#6e1f1a', '#86281a', '#a0361a'];
     const bh = h / bands.length;
     for (let i = 0; i < bands.length; i++) { c.fillStyle = tension > 0 ? SP.mix(bands[i], warBands[i], tension) : bands[i]; c.fillRect(0, Math.floor(i * bh), w, Math.ceil(bh) + 1); }
     const time = t / 1000;
@@ -1328,6 +1337,26 @@
     c.fillStyle = SP.INK; c.fillRect(mx + 1, my - 1, 10, 14); c.fillRect(mx - 1, my + 1, 14, 10); c.fillRect(mx, my, 12, 12);
     c.fillStyle = tension > 0.5 ? '#ff9a7a' : '#fff3c4'; c.fillRect(mx + 2, my, 8, 12); c.fillRect(mx, my + 2, 12, 8); c.fillRect(mx + 1, my + 1, 10, 10);
     c.fillStyle = tension > 0.5 ? '#e07a5a' : '#e8d9a0'; c.fillRect(mx + 3, my + 3, 2, 2); c.fillRect(mx + 7, my + 6, 2, 2); c.fillRect(mx + 4, my + 8, 1, 1);
+    // moon halo, clouds, far mountains and the King's castle (behind the dragons)
+    c.fillStyle = 'rgba(255,243,196,.10)';
+    for (let r = 10; r < 20; r += 2) for (let a = 0; a < 40; a++) { const an = a / 40 * Math.PI * 2; if ((a + r) % 2) c.fillRect(Math.round(mx + 6 + Math.cos(an) * r), Math.round(my + 6 + Math.sin(an) * r), 1, 1); }
+    for (let k = 0; k < 5; k++) {
+      const cw = 26 + (k * 13) % 20, cx0 = ((time * (1.2 + k * 0.3) + k * 97) % (w + 60)) - 40, cy0 = 6 + (k * 17) % Math.max(8, h - 40);
+      c.fillStyle = tension > 0 ? 'rgba(80,20,30,.35)' : 'rgba(150,130,200,.18)';
+      c.fillRect(Math.round(cx0), cy0, cw, 3); c.fillRect(Math.round(cx0) + 4, cy0 - 2, cw - 10, 2); c.fillRect(Math.round(cx0) + 9, cy0 - 3, cw - 20, 1);
+    }
+    const ridge = x => h - 14 - Math.round(Math.abs(Math.sin(x * 0.031 + 2) * 10 + Math.sin(x * 0.011) * 7));
+    c.fillStyle = tension > 0 ? '#2a0c16' : '#241a46';
+    for (let x = 0; x < w; x++) { const y = ridge(x); c.fillRect(x, y, 1, h - y); }
+    c.fillStyle = tension > 0 ? '#3a1220' : '#2f2358';
+    for (let x = 0; x < w; x++) { const y = ridge(x); if ((x % 3) === 0) c.fillRect(x, y, 1, 1); }
+    // the castle of the Dragon King, flying the ruler's banner
+    { const kx = Math.round(w * 0.74), ky = ridge(kx) - 13; const st = tension > 0 ? '#1a0810' : '#151030';
+      c.fillStyle = st; c.fillRect(kx, ky + 5, 16, 10); c.fillRect(kx - 3, ky + 2, 5, 13); c.fillRect(kx + 14, ky + 2, 5, 13); c.fillRect(kx + 6, ky - 2, 4, 8);
+      for (let i = 0; i < 3; i++) { c.fillRect(kx - 3 + i * 2, ky + 1, 1, 1); c.fillRect(kx + 14 + i * 2, ky + 1, 1, 1); }
+      c.fillStyle = Math.floor(time * 2) % 7 ? '#ffd27a' : '#ffb04a'; c.fillRect(kx + 2, ky + 8, 1, 2); c.fillRect(kx + 7, ky + 7, 2, 2); c.fillRect(kx + 12, ky + 8, 1, 2); c.fillRect(kx - 1, ky + 5, 1, 1); c.fillRect(kx + 16, ky + 5, 1, 1);
+      c.fillStyle = '#c9a55a'; c.fillRect(kx + 8, ky - 8, 1, 6);
+      c.fillStyle = EL[S.ruler].color; const wave = Math.floor(time * 3) % 2; c.fillRect(kx + 9, ky - 8, 4, 2); c.fillRect(kx + 9, ky - 6 + wave, 3, 1); }
     // dragons in their faction colours – a proportional sample, government always shown
     const adults = [];
     for (let f = 0; f < NE; f++) G.adultsOf(f).forEach(d => adults.push(d));
@@ -1375,7 +1404,7 @@
     c.globalAlpha = 1;
     if (war && war.phase === 'fight') drawBattle(c, B, ranks, pos, war, t);
     // hills
-    c.fillStyle = tension > 0 ? '#16060c' : '#120a26';
+    c.fillStyle = tension > 0 ? '#12040a' : '#0c0920';
     for (let x = 0; x < w; x++) { const hh = 6 + Math.round(Math.abs(Math.sin(x * 0.07) * 6 + Math.sin(x * 0.023 + 1) * 5)); c.fillRect(x, h - hh, 1, hh); }
     c.fillStyle = '#000';
     for (let x = 0; x < w; x++) { const hh = 6 + Math.round(Math.abs(Math.sin(x * 0.07) * 6 + Math.sin(x * 0.023 + 1) * 5)); c.fillRect(x, h - hh - 1, 1, 1); }
