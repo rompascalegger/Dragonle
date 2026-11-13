@@ -192,6 +192,7 @@
       riddle: null, cls: null, bred: false, dud: false, incT: 0, ready: false,
     }, o);
     S.dragons[d.id] = d;
+    if (d.v) assignTraits(d);
     return d;
   }
   function tutStep(k) { return !!S.tutorial.done[k]; }
@@ -469,7 +470,8 @@
       logEvent('A dud hatched, ' + refund + ' gold refunded', 'bad');
       return { ok: true, dud: true, refund, pity, cls };
     }
-    d.status = 'school'; d.age = 0; d.hatchedAt = S.played;
+    d.status = 'school'; d.age = 0; d.hatchedAt = S.played; d.house = true;
+    traitsOf(d);
     const dom = dominant(d.v);
     let hit = null;
     if (d.riddle && d.riddle.label != null) {
@@ -480,6 +482,7 @@
         const gain = Math.round(C.riddle.hitRep * (1 + C.riddle.streakBonus * Math.min(S.streak, C.riddle.streakCap)));
         S.schoolRep += gain; S.streak++;
         if (d.riddleFaction != null) addRep(d.riddleFaction, C.riddle.factionHitRep);
+        d.wis = Math.min(C.dynasty.cap, d.wis + C.dynasty.riddleWisdom); // a well-read egg hatches a wiser dragon
       } else S.streak = 0;
       S.logs.riddle.unshift({ t: Math.round(S.played), hints: d.riddle.hints, label: d.riddle.label, actual: d.v.slice(), hit, name: d.name });
       if (S.logs.riddle.length > 100) S.logs.riddle.length = 100;
@@ -496,7 +499,8 @@
       return true;
     });
     tut('hatch');
-    return { ok: true, dud: false, dragon: d, hit, impossible: hasEnemyPair(d.v) };
+    const dex = dexAdd(d);
+    return { ok: true, dud: false, dragon: d, hit, impossible: hasEnemyPair(d.v), dex };
   }
 
   // ------------------------------------------------------------ Coming of age
@@ -542,6 +546,8 @@
       logRoll('Faction choice ' + d.name, Math.round(roll * 100) / 100, '0–1');
     }
     d.status = 'adult'; d.faction = f; d.owned = false; d.raised = true;
+    if (d.shimmer) { const b = C.dynasty.shimmerBonus; d.might = Math.min(C.dynasty.cap, d.might + b); d.wis = Math.min(C.dynasty.cap, d.wis + b); d.cha = Math.min(C.dynasty.cap, d.cha + b); }
+    if (d.house) { H().heirs = (H().heirs || 0) + 1; glory(C.dynasty.glory.graduate, d.name + ' of your house has grown up'); }
     d.t1000 = now() - (d.age - C.time.adultAge);
     if (S.factions[f].ended) reformFaction(f, d.name + ' raises its banner again', d);
     dirty();
@@ -716,6 +722,92 @@
     tut('clutch');
   }
 
+  // ------------------------------------------------------------ Dynasty: house, traits, glory, Dragondex
+  const TRAIT_EL = () => C.dynasty.traitElements;
+  function assignTraits(d) {
+    const DY = C.dynasty;
+    const pa = d.parents ? d.parents.map(id => S.dragons[id]).filter(x => x && x.might != null) : [];
+    if (pa.length === 2) {
+      // children inherit their parents' gifts, with some spread
+      ['might', 'wis', 'cha'].forEach(k => { d[k] = clamp(Math.round((pa[0][k] + pa[1][k]) / 2 + ri(-DY.inheritSpread, DY.inheritSpread)), 1, DY.cap); });
+      return d;
+    }
+    const share = list2 => list2.reduce((t, id) => t + (d.v[EI[id]] || 0), 0) / STEPS;
+    d.might = clamp(ri(DY.traitBase[0], DY.traitBase[1]) + Math.round(DY.elementBonus * share(TRAIT_EL().might)), 1, DY.cap);
+    d.wis = clamp(ri(DY.traitBase[0], DY.traitBase[1]) + Math.round(DY.elementBonus * share(TRAIT_EL().wisdom)), 1, DY.cap);
+    d.cha = clamp(ri(DY.traitBase[0], DY.traitBase[1]) + Math.round(DY.elementBonus * share(TRAIT_EL().charm)), 1, DY.cap);
+    return d;
+  }
+  function traitsOf(d) { if (d && d.might == null && d.v) assignTraits(d); return d; }
+  function houseName() { const N = C.dynasty.houseNames; return 'House ' + pick(N.pre) + pick(N.suf); }
+  function H() {
+    if (!S.house) S.house = { name: houseName(), glory: 0, dex: {}, credited: {}, kings: 0, lords: 0, ministers: 0, champions: 0, log: [] };
+    return S.house;
+  }
+  function glory(n, why) {
+    const h = H(); const before = houseRank().i;
+    h.glory += n;
+    if (why) { h.log.unshift({ t: Math.round(S.played), n, why }); if (h.log.length > 60) h.log.length = 60; }
+    const after = houseRank().i;
+    if (why) emit('glory', { n, why, rankUp: after > before ? C.dynasty.ranks[after][1] : null });
+  }
+  function houseRank() {
+    const g = H().glory; const R2 = C.dynasty.ranks; let i = 0;
+    for (let k = 0; k < R2.length; k++) if (g >= R2[k][0]) i = k;
+    return { i, name: R2[i][1], next: R2[i + 1] ? R2[i + 1][0] : null, from: R2[i][0] };
+  }
+  function dexKey(v) {
+    if (isPure(v)) return 'p:' + EL[dominant(v)].id;
+    const top = present(v).sort((a, b) => v[b] - v[a] || a - b).slice(0, 2).sort((a, b) => a - b);
+    return 'm:' + EL[top[0]].id + '-' + EL[top[1]].id;
+  }
+  function dexAdd(d) {
+    const h = H(); const k = dexKey(d.v);
+    if (h.dex[k]) return null;
+    h.dex[k] = { name: d.name, v: d.v.slice(), seed: d.seed, mat: d.mat, t: Math.round(S.played) };
+    S.gold += C.dynasty.dexGold;
+    glory(C.dynasty.glory.dex, 'New in the Dragondex: ' + d.name);
+    return { key: k, gold: C.dynasty.dexGold };
+  }
+  function lessonCost(d) { const L = C.dynasty.lesson; return Math.round(L.cost * Math.pow(L.growth, d.lessons || 0)); }
+  function lessonReady(d) { return S.played - (d.lessonAt || -1e9) >= C.dynasty.lesson.seconds; }
+  function lesson(id, kind) {
+    const d = S.dragons[id]; if (!d || d.status !== 'school') return { ok: false, msg: 'Only pupils at the Dragon School take lessons.' };
+    traitsOf(d);
+    const k = { might: 'might', wisdom: 'wis', charm: 'cha' }[kind]; if (!k) return { ok: false };
+    if (!lessonReady(d)) return { ok: false, msg: d.name + ' is still resting from the last lesson.' };
+    if (d[k] >= C.dynasty.cap) return { ok: false, msg: 'Nothing left to teach in that subject.' };
+    const cost = lessonCost(d); if (S.gold < cost) return { ok: false, msg: 'Not enough gold (' + cost + ' G).' };
+    S.gold -= cost;
+    const gain = ri(C.dynasty.lesson.gain[0], C.dynasty.lesson.gain[1]);
+    d[k] = Math.min(C.dynasty.cap, d[k] + gain); d.lessons = (d.lessons || 0) + 1; d.lessonAt = S.played;
+    tut('lesson');
+    return { ok: true, gain, k, cost };
+  }
+  function fledglingPrice(d) { traitsOf(d); const F = C.dynasty.fledgling; return Math.round(F.base + (d.might + d.wis + d.cha) * F.perTrait + Math.floor(d.age / C.time.levelEvery) * F.perLevel + (d.mat ? F.material * d.mat : 0)); }
+  function sellFledgling(id) {
+    const d = S.dragons[id]; if (!d || d.status !== 'school') return { ok: false };
+    const p = fledglingPrice(d);
+    S.gold += p; S.stats.gold += p;
+    S.nests.forEach((n, i) => { if (n && (n.a === id || n.b === id)) S.nests[i] = null; });
+    delete S.dragons[id];
+    return { ok: true, price: p };
+  }
+  function updateDynasty(dt) {
+    const h = H(); const G2 = C.dynasty.glory;
+    const k = S.king && S.dragons[S.king];
+    if (k && k.house) {
+      if (!h.credited['king' + k.id]) { h.credited['king' + k.id] = true; h.kings++; glory(G2.king, k.name + ' of your house is crowned Dragon King!'); emit('dynasty', { kind: 'king', id: k.id }); }
+      h.glory += G2.kingPerMinute / 60 * dt;
+      S.gold += C.dynasty.tithePerSecond * dt;
+    }
+    for (let f = 0; f < NE; f++) {
+      const e = eldest(f);
+      if (e && e.house && !h.credited['lord' + e.id + ':' + f]) { h.credited['lord' + e.id + ':' + f] = true; h.lords++; glory(G2.lord, e.name + ' of your house leads ' + EL[f].name); emit('dynasty', { kind: 'lord', id: e.id, f }); }
+    }
+    S.gov.forEach(id => { const d = S.dragons[id]; if (d && d.house && !h.credited['gov' + id]) { h.credited['gov' + id] = true; h.ministers++; glory(G2.minister, d.name + ' of your house joins the government'); emit('dynasty', { kind: 'minister', id }); } });
+  }
+
   // ------------------------------------------------------------ Factions, king, needs
   function factionPower(f) { return adultsOf(f).reduce((s, d) => s + strength(d), 0); }
   function needsMean(f) { const n = S.factions[f].needs; return (n.raum + n.brut + n.ehre + n.tribut) / 400; }
@@ -760,7 +852,8 @@
       if (k) {
         k.role = 'king';
         const pool = list(d => d.status === 'adult' && d.id !== k.id && (d.faction === S.ruler || allied(d.faction, S.ruler)));
-        pool.sort((x, y) => (present(y.v).length - present(x.v).length) || (x.t1000 - y.t1000));
+        pool.forEach(traitsOf);
+        pool.sort((x, y) => (y.cha - x.cha) || (present(y.v).length - present(x.v).length) || (x.t1000 - y.t1000));
         S.gov = pool.slice(0, C.factions.govSize).map(d => { d.role = 'gov'; return d.id; });
         if (!silent && oldKing !== S.king) { emit('coronation', { king: k.id, f: S.ruler }); logEvent(k.name + ' becomes Dragon King (' + EL[S.ruler].name + ')', 'epic'); }
       } else S.gov = [];
@@ -879,6 +972,8 @@
     const need = topic ? S.factions[c].needs[topic] : needsMean(c) * 100;
     let p = AR.base + AR.powerWeight * (pk - pc) / Math.max(0.001, pk + pc) - AR.grievanceWeight * (1 - need / 100);
     if (W.arg.whisper === 'king') p += AR.whisper; else if (W.arg.whisper === 'chal') p -= AR.whisper;
+    const kd = S.dragons[W.arg.king], cdg = S.dragons[W.arg.chal];
+    if (kd && cdg) p += C.dynasty.argueCharm * (traitsOf(kd).cha - traitsOf(cdg).cha) / 100;
     return clamp(p, AR.min, AR.max);
   }
   function argueRound() {
@@ -934,6 +1029,8 @@
     if (W.pledge === 'a') pa *= 1 + C.diplomacy.pledgePower;
     if (W.pledge === 'd') pd *= 1 + C.diplomacy.pledgePower;
     const ca = W.ca || champion(A), cd = W.cd || champion(D);
+    const cm = c => 1 + C.dynasty.championMight * (((c && c.might) || 50) - 50) / 100; // a mighty champion carries its side
+    pa *= cm(ca); pd *= cm(cd);
     const chance = pa + pd > 0 ? pa / (pa + pd) : 0.5;
     const roll = R();
     logRoll('War ' + sideName(sa) + ' vs ' + sideName(sd), Math.round(roll * 1000) / 1000, '< ' + chance.toFixed(3) + ' = attackers win');
@@ -995,6 +1092,8 @@
     }
     if (ca) ca.fallen = !S.dragons[ca.id];
     if (cd) cd.fallen = !S.dragons[cd.id];
+    const hc = [ca, cd].find(c => c && c.house && wside.includes(c.f));
+    if (hc) { H().champions = (H().champions || 0) + 1; glory(C.dynasty.glory.champion, hc.name + ' of your house won the war as champion'); }
     const res = { attacker: A, defender: D, sa, sd, chance, roll, attackerWins, winner, loser, wside, lside, losses, collapsed, fates, newRuler, pa, pd, ca, cd, pledge, t: Math.round(S.played) };
     S.logs.wars.unshift(res); if (S.logs.wars.length > 50) S.logs.wars.length = 50;
     let total = 0; for (let f = 0; f < NE; f++) total += adultsOf(f).length;
@@ -1014,9 +1113,12 @@
   function hasPact(a, b) { return D().pacts.some(p => p.until > S.played && ((p.a === a && p.b === b) || (p.a === b && p.b === a))); }
   function champion(f) {
     const a = adultsOf(f); if (!a.length) return null;
-    const d = a.reduce((m, x) => (x.t1000 > m.t1000 ? x : m)); // the youngest adult is the strongest
+    a.forEach(traitsOf);
+    const ours = a.filter(x => x.house);
+    const d = ours.length ? ours.reduce((m, x) => (x.might > m.might ? x : m)) // your house's mightiest dragon steps forward
+      : a.reduce((m, x) => (x.t1000 > m.t1000 ? x : m)); // otherwise the youngest adult, who is the strongest
     const k = f === S.ruler && S.king ? S.dragons[S.king] : eldest(f);
-    return { id: d.id, name: d.name, v: d.v.slice(), mat: d.mat, seed: d.seed, deep: d.deep, f, str: strength(d), king: k ? k.name : null };
+    return { id: d.id, name: d.name, v: d.v.slice(), mat: d.mat, seed: d.seed, deep: d.deep, f, str: strength(d), king: k ? k.name : null, might: d.might, house: !!d.house };
   }
   function repBonus(f) { return Math.max(0, repLevel(f) - REPI.neutral) * C.diplomacy.repLevelBonus; }
   function updateCourt(dt) {
@@ -1204,7 +1306,7 @@
             while ((b === a || isEnemy(dominant(a.v), dominant(b.v))) && tries++ < 5) b = pick(ad);
             if (b === a) continue;
             const inh = inherit(a, b);
-            const d = newDragon({ v: inh.v, status: 'wildegg', owned: false, faction: f, zone: EL[f].id, parents: [a.id, b.id] });
+            const d = newDragon({ v: inh.v, status: 'wildegg', owned: false, faction: f, zone: EL[f].id, parents: [a.id, b.id], house: !!(a.house || b.house) });
             F.nest.push(d.id);
           }
           F.needs.brut = Math.min(100, F.needs.brut + 15);
@@ -1460,7 +1562,7 @@
     if (S.market.offers.some(o => o.expires <= S.played)) refreshOffers();
     if (S.played - S.offersAt >= C.activities.refreshSeconds) refreshActivities();
     S._roleT = (S._roleT || 0) + dt;
-    if (S._roleT >= 1) { S._roleT = 0; updateRoles(false); }
+    if (S._roleT >= 1) { S._roleT = 0; updateRoles(false); updateDynasty(1); }
   }
 
   // ------------------------------------------------------------ Saving
@@ -1489,6 +1591,8 @@
     // court & diplomacy
     dip: () => D(), decree, hasPact, champion, audience, envoy, envoyChance, envoyCheck, pledge,
     argueChance, whisper, chronicle: () => CH(),
+    // dynasty
+    house: () => H(), houseRank, traitsOf, lesson, lessonCost, lessonReady, fledglingPrice, sellFledgling, dexKey,
     // tests & simulation
     _rollClutch: rollClutch, _inherit: inherit, _genVector: genVector, _R: () => R(),
   };

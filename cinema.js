@@ -141,8 +141,8 @@
     const ia = champSprite(w.ca, A, false), id = champSprite(w.cd, D, true);
     L.querySelector('img').src = ia.src; L.querySelector('img').width = ia.w; L.querySelector('img').height = ia.h;
     Rr.querySelector('img').src = id.src; Rr.querySelector('img').width = id.w; Rr.querySelector('img').height = id.h;
-    L.querySelector('.plate').innerHTML = `<small>CHAMPION OF ${EL[A].name.toUpperCase()}</small><b>${w.ca ? w.ca.name : '???'}</b><span>power ${w.pa.toFixed(1)}</span>`;
-    Rr.querySelector('.plate').innerHTML = `<small>CHAMPION OF ${EL[D].name.toUpperCase()}</small><b>${w.cd ? w.cd.name : '???'}</b><span>power ${w.pd.toFixed(1)}</span>`;
+    L.querySelector('.plate').innerHTML = `<small>${w.ca && w.ca.house ? '♜ YOUR HOUSE · ' : ''}CHAMPION OF ${EL[A].name.toUpperCase()}</small><b>${w.ca ? w.ca.name : '???'}</b><span>power ${w.pa.toFixed(1)}${w.ca && w.ca.might != null ? ' · might ' + w.ca.might : ''}</span>`;
+    Rr.querySelector('.plate').innerHTML = `<small>${w.cd && w.cd.house ? '♜ YOUR HOUSE · ' : ''}CHAMPION OF ${EL[D].name.toUpperCase()}</small><b>${w.cd ? w.cd.name : '???'}</b><span>power ${w.pd.toFixed(1)}${w.cd && w.cd.might != null ? ' · might ' + w.cd.might : ''}</span>`;
     L.style.setProperty('--c', ca); Rr.style.setProperty('--c', cd);
     const ink = (node, c) => { const n = parseInt(c.slice(1), 16); const lum = ((n >> 16) & 255) * 0.3 + ((n >> 8) & 255) * 0.59 + (n & 255) * 0.11; if (lum > 165) { node.style.color = '#1b1024'; node.style.textShadow = 'none'; } };
     ink(L.querySelector('.plate'), ca); ink(Rr.querySelector('.plate'), cd);

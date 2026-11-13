@@ -10,13 +10,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=4.0.0">
+  <link rel="stylesheet" href="style.css?v=4.1.4">
 </head>
 <body>
   <header class="topbar">
     <div class="brand"><span data-icon="egg" data-scale="3"></span><span class="brand-name">DRAGONLE</span></div>
     <div class="stats">
       <span class="chip gold" title="Gold"><span data-icon="coin"></span><b id="gold">0</b></span>
+      <span class="chip house" id="house-chip" title="Your house and its glory" data-act="nav" data-id="house"></span>
       <span class="chip" title="Dragon School reputation – makes riddles clearer"><span data-icon="cap"></span><b id="schoolrep">0</b></span>
       <span class="chip ruler" id="ruler-chip" title="Ruling faction"></span>
       <span class="chip time" title="The year of the dragon world (1 year = 1 second of play)"><span data-icon="hourglass"></span><b id="played">0</b></span>
@@ -48,7 +49,7 @@
     <button type="button" data-nav="school"><span data-icon="school" data-scale="3"></span>School</button>
     <button type="button" data-nav="nest"><span data-icon="nest" data-scale="3"></span>Nest</button>
     <button type="button" data-nav="market"><span data-icon="market" data-scale="3"></span>Market</button>
-    <button type="button" data-nav="dragons"><span data-icon="dragons" data-scale="3"></span>Dragons</button>
+    <button type="button" data-nav="house"><span data-icon="dragons" data-scale="3"></span>House</button>
     <button type="button" data-nav="factions"><span data-icon="factions" data-scale="3"></span>Factions</button>
     <button type="button" data-nav="bag"><span data-icon="bag" data-scale="3"></span>Bag</button>
     <button type="button" data-nav="log"><span data-icon="log" data-scale="3"></span>Log</button>
@@ -63,14 +64,14 @@
   <div id="toasts" class="toasts" aria-live="polite"></div>
   <div id="flash" class="flash" aria-hidden="true"></div>
 
-  <script src="config.js?v=4.0.0"></script>
-  <script src="core.js?v=4.0.0"></script>
-  <script src="sprites.js?v=4.0.0"></script>
-  <script src="voices.js?v=4.0.0"></script>
-  <script src="quotes-1.js?v=4.0.0"></script>
-  <script src="quotes-2.js?v=4.0.0"></script>
-  <script src="court.js?v=4.0.0"></script>
-  <script src="cinema.js?v=4.0.0"></script>
-  <script src="ui.js?v=4.0.0"></script>
+  <script src="config.js?v=4.1.4"></script>
+  <script src="core.js?v=4.1.4"></script>
+  <script src="sprites.js?v=4.1.4"></script>
+  <script src="voices.js?v=4.1.4"></script>
+  <script src="quotes-1.js?v=4.1.4"></script>
+  <script src="quotes-2.js?v=4.1.4"></script>
+  <script src="court.js?v=4.1.4"></script>
+  <script src="cinema.js?v=4.1.4"></script>
+  <script src="ui.js?v=4.1.4"></script>
 </body>
 </html>

@@ -309,11 +309,14 @@
     const need = G.canCollect(s) ? '' : ' – needs ' + G.REPL[G.scaleNeed(s)].name + ' with ' + elName(s.f) + (S.access[s.f] ? '' : ' (raise a dragon for them first)');
     return `${what}, lvl ${s.level}, ${C.scales.quality[s.q].name}${s.mat ? ', ' + matName(s.mat) : ''}, worth ${G.scaleSalePrice(s)} G${need}`;
   }
+  const TR = [['might', 'Might', '#ff7a5a'], ['wis', 'Wisdom', '#7fc8ff'], ['cha', 'Charm', '#ffb0e0']];
+  function traitChips(d) { G.traitsOf(d); return `<span class="traits">${TR.map(t => `<span class="trc" style="--t:${t[2]}" title="${t[1]}">${t[1][0]} <b>${d[t[0]]}</b></span>`).join('')}${d.house ? '<span class="hb" title="' + G.house().name + '">♜</span>' : ''}</span>`; }
+  function traitBars(d) { G.traitsOf(d); return `<div class="traitbars">${TR.map(t => `<div class="tb"><span>${t[1]}</span><div class="bar"><i style="width:${d[t[0]]}%;background:${t[2]}"></i></div><b>${d[t[0]]}</b></div>`).join('')}</div>`; }
   function dragonCard(d, extra) {
     const mature = d.status === 'school' && d.age >= C.time.matureAge;
     return `<div class="card click" data-act="dragon" data-id="${d.id}">
       <div class="pic">${imgDragon(d, 3)}</div>
-      <div class="meta"><div class="nm">${d.name} ${tags(d)}</div><small>${SP.variantName(d)}</small>${vecBar(d.v)}
+      <div class="meta"><div class="nm">${d.name} ${tags(d)}</div><small>${SP.variantName(d)}</small>${traitChips(d)}${vecBar(d.v)}
         <div class="dim"><span data-live="age:${d.id}"></span> · lvl <span data-live="lvl:${d.id}"></span>${mature ? ' · <span class="mature">mature</span>' : ''}${extra || ''}</div>
         ${d.status === 'school' ? `<div class="bar"><i data-livew="school:${d.id}"></i></div>` : ''}
       </div></div>`;
@@ -710,6 +713,52 @@
   };
 
   // every living dragon in one list, with live ages
+  SCREENS.house = function () {
+    const tab = ui.tabs.house || 'dynasty'; ui.tabs.house = tab;
+    const tabs = tabBar('house', [['dynasty', 'Dynasty'], ['dex', 'Dragondex'], ['all', 'All dragons']]);
+    if (tab === 'all') return SCREENS.dragons().replace('<div class="screen-head">', tabs + '<div class="screen-head">');
+    const h = G.house(); const rk = G.houseRank();
+    const head = `<div class="screen-head"><h2>${h.name}</h2><span class="sub">${rk.name} · ${fmt(h.glory)} glory</span></div>${tabs}`;
+    if (tab === 'dex') {
+      const cells = [];
+      EL.forEach((e, i) => cells.push({ k: 'p:' + e.id, label: e.name, v: (() => { const v = new Array(NE).fill(0); v[i] = 20; return v; })() }));
+      for (let a = 0; a < NE; a++) for (let b = a + 1; b < NE; b++) { const v = new Array(NE).fill(0); v[a] = 10; v[b] = 10; cells.push({ k: 'm:' + EL[a].id + '-' + EL[b].id, label: EL[a].name + ' + ' + EL[b].name, v, imp: G.isEnemy(a, b) }); }
+      const found = cells.filter(c => h.dex[c.k]).length;
+      return head + `<div class="panel row"><b>${found} / ${cells.length}</b> discovered<div class="bar gold" style="flex:1;min-width:160px"><i style="width:${found / cells.length * 100}%"></i></div><small>Every new kind pays ${C.dynasty.dexGold} G and ${C.dynasty.glory.dex} glory. A kind is its strongest one or two elements.</small></div>
+        <div class="dex">${cells.map(c => { const e = h.dex[c.k]; return `<div class="dexc ${e ? 'on' : ''} ${c.imp ? 'imp' : ''}" title="${c.label}${c.imp ? ' (impossible – arch-enemies)' : ''}">${e ? imgDragon({ id: 'dex' + c.k, v: e.v, mat: e.mat || 0, seed: e.seed, deep: false, name: e.name }, 2) : `<span class="q">?</span>`}<small>${c.label}</small></div>`; }).join('')}</div>`;
+    }
+    const mine = G.list(d => d.house && (d.status === 'school' || d.status === 'adult' || d.status === 'wild' || d.status === 'exile'));
+    const adults = mine.filter(d => d.status === 'adult');
+    const k = S.king && S.dragons[S.king];
+    const goals = [
+      ['Raise your first heir to adulthood', (h.heirs || 0) > 0 || G.list(d => d.house && d.status === 'adult').length > 0],
+      ['Discover 10 kinds of dragon', Object.keys(h.dex).length >= 10],
+      ['Seat a minister in the government', h.ministers > 0],
+      ['Lead a faction (its eldest dragon)', h.lords > 0],
+      ['Win a war with your champion', (h.champions || 0) > 0],
+      ['Crown a Dragon King of your blood', h.kings > 0],
+      ['Discover all 78 kinds', Object.keys(h.dex).length >= 78],
+      ['Three Dragon Kings of your blood', h.kings >= 3],
+    ];
+    const nextGoal = goals.find(g => !g[1]);
+    const byF = {}; adults.forEach(d => { byF[d.faction] = (byF[d.faction] || 0) + 1; });
+    const best = mine.slice().sort((a, b) => (b.might + b.wis + b.cha) - (a.might + a.wis + a.cha)).slice(0, 6);
+    return head + `<div class="panel housecrest">
+        <div class="crest">♜</div>
+        <div><h3>${h.name}</h3><div class="row"><span class="tag">${rk.name}</span><b>${fmt(h.glory)}</b> glory${rk.next ? ` · ${fmt(rk.next - h.glory)} to the next rank` : ''}</div>
+          <div class="bar gold"><i style="width:${rk.next ? Math.min(100, (h.glory - rk.from) / (rk.next - rk.from) * 100) : 100}%"></i></div>
+          <p>${k && k.house ? `<b class="goldt">♛ ${k.name} of your house sits on the Dragon Throne!</b> The royal tithe brings ${C.dynasty.tithePerSecond} G every year.` : `The throne belongs to ${k ? k.name + ' of ' + elName(S.ruler) : 'no one'}. The King is always the eldest dragon of the ruling faction – raise old, strong lines and help their faction to power.`}</p>
+          ${nextGoal ? `<p>Next goal: <b>${nextGoal[0]}</b></p>` : '<p class="goldt"><b>Every goal achieved – an eternal dynasty!</b></p>'}</div></div>
+      <div class="grid cols-2">
+        <div class="panel"><h3>The path of your house</h3>${goals.map(g => `<div class="goal ${g[1] ? 'done' : ''}">${g[1] ? '✔' : '☐'} ${g[0]}</div>`).join('')}</div>
+        <div class="panel"><h3>Your blood in the sky</h3>
+          <div class="row" style="font-size:14px"><span>Pupils <b>${mine.filter(d => d.status === 'school').length}</b></span><span>Grown <b>${adults.length}</b></span><span>Wild-born heirs <b>${mine.filter(d => d.status === 'wild').length}</b></span><span>Lords <b>${h.lords}</b></span><span>Champion wins <b>${h.champions || 0}</b></span><span>Ministers <b>${h.ministers}</b></span><span>Kings <b>${h.kings}</b></span></div>
+          <div class="row">${Object.keys(byF).map(f => `<span class="tag">${sw(+f)} ${elName(+f)} ${byF[f]}</span>`).join('') || '<small>None of your dragons has grown up yet.</small>'}</div>
+          <h3>Glory</h3><div class="log">${h.log.slice(0, 8).map(x => `<div class="li good"><span class="t">${fmtTime(x.t)}</span><span>+${x.n} · ${x.why}</span></div>`).join('') || '<small>Glory comes from heirs, ministers, lords, champions, kings and discoveries.</small>'}</div></div>
+      </div>
+      <div class="section"><h3>The finest of your blood</h3><small>by Might + Wisdom + Charm</small></div>
+      ${best.length ? `<div class="grid cols-3">${best.map(d => dragonCard(d, d.status === 'adult' ? ' · ' + elName(d.faction) : '')).join('')}</div>` : '<div class="empty panel">Hatch your first egg to found the line.</div>'}`;
+  };
   SCREENS.dragons = function () {
     const F = ui.dfilter;
     const all = G.list(d => d.status === 'school' || d.status === 'adult' || d.status === 'wild' || d.status === 'exile');
@@ -793,6 +842,7 @@
   function updateTop() {
     $('#gold').textContent = fmt(S.gold);
     $('#schoolrep').textContent = fmt(S.schoolRep);
+    { const h = G.house(); const t = `<span class="crest-s">♜</span><b>${h.name.replace('House ', '')}</b><small>${fmt(h.glory)} glory</small>`; if (ui.houseHtml !== t) { $('#house-chip').innerHTML = t; ui.houseHtml = t; } }
     $('#played').textContent = 'Year ' + fmt(C.time.startYear + Math.floor(S.played));
     const k = S.king && S.dragons[S.king];
     const rc = `${icon('crown')} ${sw(S.ruler)} <b>${elName(S.ruler)}</b>${k ? ' <small>' + k.name + '</small>' : ''}`;
@@ -808,12 +858,15 @@
     const d = S.dragons[id]; if (!d) return;
     if (d.status === 'egg' || d.status === 'incubating') return eggModal(id);
     const parents = d.parents ? d.parents.map(p => S.dragons[p]).filter(Boolean).map(p => p.name).join(' × ') : '';
-    const statusText = { school: 'Pupil in the ' + zoneTitle(S.zones[d.zone]), adult: 'Adult · belongs to ' + elName(d.faction), wild: 'Young wild dragon', exile: 'In exile · fled from ' + (d.exileOf != null ? elName(d.exileOf) : '?') }[d.status] || d.status;
+    const statusText = ({ school: () => 'Pupil in the ' + (S.zones[d.zone] ? zoneTitle(S.zones[d.zone]) : 'Dragon School'), adult: () => 'Adult · belongs to ' + (d.faction != null ? elName(d.faction) : '?'), wild: () => 'Young wild dragon', exile: () => 'In exile · fled from ' + (d.exileOf != null ? elName(d.exileOf) : '?') }[d.status] || (() => d.status))();
     showModal({ rebuild: () => dragonModalHtml(d, statusText, parents), build(b) { b.innerHTML = this.rebuild(); } }, true);
   }
   function dragonModalHtml(d, statusText, parents) {
     return `<h2>${d.name}</h2><div class="reveal">${hero(imgDragon(d, 5), d.mat)}<div>${tags(d)}</div></div>
       <p class="center"><b>${statusText}</b><br><small>${SP.variantName(d)}</small></p>
+      ${d.house ? `<p class="center houseline">♜ of <b>${G.house().name}</b></p>` : ''}
+      <h3>Gifts</h3>${traitBars(d)}
+      ${d.status === 'school' ? lessonHtml(d) : ''}
       <h3>${icon('lupe')} Magnifier – exact shares</h3>${vecRows(d.v)}
       <div class="grid cols-2" style="margin-top:12px;gap:6px">
         <div>Age: <b data-live="age:${d.id}"></b></div><div>Level: <b data-live="lvl:${d.id}"></b></div>
@@ -821,6 +874,15 @@
         ${d.mat ? `<div>Material: <b>${matName(d.mat)}</b> (tier ${d.mat}, 1 : ${Math.round(1 / G.materialChance(d.mat))})</div>` : ''}
         ${parents ? `<div>Parents: ${parents}</div>` : ''}
       </div>`;
+  }
+  function lessonHtml(d) {
+    const ready = G.lessonReady(d), cost = G.lessonCost(d);
+    return `<div class="lessons panel alt"><b>Lessons at the Dragon School</b> <small>${ready ? 'ready' : 'resting from the last lesson'} · ${cost} G each · lessons so far: ${d.lessons || 0}</small>
+      <div class="row"><button class="btn small" type="button" data-act="lesson" data-id="${d.id}" data-k="might" ${ready ? '' : 'disabled'}>⚔ Battle drills</button>
+      <button class="btn small" type="button" data-act="lesson" data-id="${d.id}" data-k="wisdom" ${ready ? '' : 'disabled'}>✦ Old lore</button>
+      <button class="btn small" type="button" data-act="lesson" data-id="${d.id}" data-k="charm" ${ready ? '' : 'disabled'}>♥ Court manners</button>
+      <span class="spacer"></span><button class="btn small ghost" type="button" data-act="sellFledgling" data-id="${d.id}">Sell to a noble house · ${G.fledglingPrice(d)} G</button></div>
+      <small>Might wins wars as champion · Wisdom pays off in riddles · Charm wins throne arguments and seats in the government. Children inherit their parents' gifts.</small></div>`;
   }
   function eggModal(id) {
     showModal({
@@ -885,6 +947,7 @@
           if (G.isPure(d.v)) ex.push('<div class="fanfare">Purebred!</div>');
           if (res.impossible) ex.push('<div class="epic"><b>An impossible dragon – it carries arch-enemy elements!</b></div>');
           if (mutated(d)) { ex.push(`<div class="epic"><b>Mutation! New element: ${elTag(d.mutated)}</b></div>`); flash(); }
+          if (res.dex) ex.push(`<div class="goldt"><b>New in the Dragondex! +${res.dex.gold} G</b></div>`);
           if (res.hit === true) { ex.push(`<div class="good"><b>Guessed right! School reputation rises${S.streak > 1 ? ' (streak ' + S.streak + ')' : ''}.</b></div>`); Snd.coin(); }
           if (res.hit === false) ex.push('<div class="bad"><b>Label missed.</b></div>');
           $('#hn').textContent = d.name;
@@ -1018,6 +1081,8 @@
           break;
         case 'royalSpeech': sayCourt(Court.kingSpeech(e)); if (e.decree) { const d = C.decrees.find(x => x.id === e.decree); toast(`📜 Royal decree: <b>${d.name}</b> – ${d.text}`, 'epic'); } break;
         case 'ministerSpeech': sayCourt(Court.ministerSpeech(e)); break;
+        case 'glory': toast(`♜ <b>+${e.n} glory</b> · ${e.why}${e.rankUp ? `<br><b class="goldt">Your house rises: ${e.rankUp}!</b>` : ''}`, e.rankUp ? 'epic' : 'good'); if (e.rankUp) { Snd.epic(); flash(); } break;
+        case 'dynasty': if (e.kind === 'king') { Snd.epic(); flash(); } break;
         case 'argumentStart':
           sayCourt(Court.challenge(e));
           toast(`${icon('crown')} <b>${elName(e.attacker)} challenges the Dragon King!</b> If the King loses the argument, it means war.`, 'war');
@@ -1111,6 +1176,8 @@
       render(true);
     },
     courtLog: () => courtLogModal(),
+    lesson: d => { const r = G.lesson(+d.id, d.k); if (r.ok) { Snd.coin(); toast(`Lesson done: +${r.gain} ${({ might: 'Might', wis: 'Wisdom', cha: 'Charm' })[r.k]}`, 'good'); refreshModal(); } result(r); },
+    sellFledgling: d => { const dd = S.dragons[+d.id]; if (!dd || !confirm('Sell ' + dd.name + ' to a noble house for ' + G.fledglingPrice(dd) + ' G? It leaves your bloodline.')) return; const r = G.sellFledgling(+d.id); if (r.ok) { Snd.coin(); closeModal(); toast(dd.name + ' leaves for a noble house: +' + r.price + ' G', 'good'); } result(r); },
     warDetails: () => { if (ui.lastWar) warResultModal(ui.lastWar); },
     watchArgument: () => { if (window.Cinema && Cinema.arenaOpenNow()) Cinema.arenaShow(); else toast('The argument is over.', 'bad'); },
     whisper: d => { const r = G.whisper(d.side); if (r.ok) { Snd.coin(); toast('Your whisper reaches ' + (d.side === 'king' ? 'the King' : elName(S.war.attacker)) + '.', 'good'); } result(r); },
@@ -1265,6 +1332,17 @@
       <p>Each faction has four needs: <b>space, brood, honour and tribute</b>. Crowded, unhappy, uncompromising factions risk war. You will see it coming: the needs flash, the faction warns you, and the sky turns red.</p>
       <p>The battle is one open roll: the attacker wins with chance <b>power ÷ (power + defender's power)</b>, allies counting half. The loser's king always falls. About 30 % of the losers fall, 30 % defect or flee, the rest stay as subjects. Everyone who fought is war-marked – and the fate of every dragon you raised is told one by one.</p>
       ${tip('War is the sky\'s brake on overpopulation. A faction bursting at the seams is a faction about to fight.')}` },
+    { t: 'Your House & Dynasty', i: 'crown', body: () => `
+      <p>You are not just a Keeper – you are the founder of <b>${G.house().name}</b>. Every egg you hatch carries your blood, and so do its children, even those born wild in a faction's nest.</p>
+      <h3>Gifts: Might, Wisdom, Charm</h3>
+      <p>Every dragon has three gifts. Children inherit their parents' average with some spread, so <b>breeding is how you build a great line</b>. Elements lean towards gifts: fire, magma, lightning and stone towards Might; water, ice, light and darkness towards Wisdom; wind, nature, poison and sand towards Charm.</p>
+      <table><tr><td><b>Might</b></td><td>Each war side fields a champion – your house's mightiest dragon if you have one there. A mighty champion carries its side.</td></tr>
+      <tr><td><b>Wisdom</b></td><td>A correct riddle label hatches a wiser dragon (+${C.dynasty.riddleWisdom}).</td></tr>
+      <tr><td><b>Charm</b></td><td>Wins throne arguments and earns a seat in the King's government.</td></tr></table>
+      <h3>Lessons</h3><p>Pupils at the Dragon School can take a lesson every ${C.dynasty.lesson.seconds} years: battle drills, old lore or court manners. Each lesson costs a little more. A trained, older pupil can also be sold to another noble house.</p>
+      <h3>Glory and the throne</h3>
+      <p>Your house earns <b>glory</b> for grown heirs, Dragondex discoveries, ministers, faction lords and champion victories. Climb from Hatchling House to Eternal Dynasty. The greatest prize: a Dragon King of your blood. The King is always the eldest dragon of the ruling faction – so raise long-lived lines and help their faction to power. While your blood sits on the throne, a royal tithe of ${C.dynasty.tithePerSecond} G per year flows to you.</p>
+      <h3>The Dragondex</h3><p>78 kinds: twelve purebreds and every pair of elements. Every new kind pays ${C.dynasty.dexGold} G and glory.</p>` },
     { t: 'The Court & Diplomacy', i: 'crown', body: () => `
       <p>The sky is not ruled by claws alone. Every <b>${C.diplomacy.speechEvery} years</b> the Dragon King addresses the realm – listen at the bottom of the screen. Between speeches the ministers of the government brief you: the Minister of War warns of restless factions, the Spymaster whispers which houses are close to an alliance, the Master of Coin talks prices.</p>
       <h3>Royal decrees</h3>

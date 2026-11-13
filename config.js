@@ -355,6 +355,32 @@
     },
 
     // ---------------------------------------------------------------- Court & diplomacy
+    // ---------------------------------------------------------------- Dynasty: your house, traits, glory
+    dynasty: {
+      houseNames: {
+        pre: ['Ember', 'Storm', 'Moon', 'Thorn', 'Frost', 'Ash', 'Gold', 'Night', 'Dawn', 'Iron', 'Silver', 'Dusk'],
+        suf: ['veil', 'crest', 'wing', 'hollow', 'fang', 'spire', 'hearth', 'mere', 'scale', 'gale', 'crown', 'brook'],
+      },
+      traitBase: [10, 40],        // Might, Wisdom and Charm of a dragon without known parents
+      elementBonus: 22,           // + up to this much for elements that favour a trait
+      traitElements: {
+        might: ['fire', 'magma', 'lightning', 'stone'],
+        wisdom: ['water', 'ice', 'light', 'dark'],
+        charm: ['wind', 'nature', 'poison', 'sand'],
+      },
+      inheritSpread: 12,          // children: parents' average ± this
+      cap: 100,
+      riddleWisdom: 10,           // a correct riddle label hatches a wiser dragon
+      shimmerBonus: 5,            // raised in its own element's zone: + to every trait
+      lesson: { seconds: 45, gain: [4, 10], cost: 20, growth: 1.25 },
+      championMight: 0.4,         // side power × (1 + 0.4 × (champion Might − 50) / 100)
+      argueCharm: 0.25,           // throne arguments: + 0.25 × (King Charm − challenger Charm) / 100
+      glory: { graduate: 3, dex: 5, minister: 20, lord: 40, king: 250, kingPerMinute: 30, champion: 30 },
+      dexGold: 25,                // every new Dragondex entry pays gold
+      tithePerSecond: 2,          // a Dragon King of your house sends gold
+      fledgling: { base: 3, perTrait: 0.15, perLevel: 0.6, material: 8 }, // grows with age and training; a fresh hatchling is worth little
+      ranks: [[0, 'Hatchling House'], [100, 'Minor House'], [500, 'Noble House'], [1500, 'Great House'], [4000, 'Royal House'], [10000, 'Eternal Dynasty']],
+    },
     diplomacy: {
       speechEvery: 100,         // the Dragon King speaks every 100 game years
       ministerEvery: [25, 45],   // a minister speaks between royal speeches (random gap, seconds)
